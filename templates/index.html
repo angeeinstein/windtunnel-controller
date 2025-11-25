@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wind Tunnel Control System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Wind Tunnel Control System</h1>
+            <div class="status-indicator">
+                <span class="status-dot" id="statusDot"></span>
+                <span id="statusText">Connecting...</span>
+            </div>
+        </header>
+
+        <main>
+            <div class="data-grid">
+                <!-- Primary Measurements -->
+                <div class="data-card primary">
+                    <h2>Velocity</h2>
+                    <div class="value-display">
+                        <span class="value" id="velocity">--</span>
+                        <span class="unit">m/s</span>
+                    </div>
+                </div>
+
+                <div class="data-card primary">
+                    <h2>Lift Force</h2>
+                    <div class="value-display">
+                        <span class="value" id="lift">--</span>
+                        <span class="unit">N</span>
+                    </div>
+                </div>
+
+                <div class="data-card primary">
+                    <h2>Drag Force</h2>
+                    <div class="value-display">
+                        <span class="value" id="drag">--</span>
+                        <span class="unit">N</span>
+                    </div>
+                </div>
+
+                <!-- Secondary Measurements -->
+                <div class="data-card">
+                    <h2>Pressure</h2>
+                    <div class="value-display">
+                        <span class="value" id="pressure">--</span>
+                        <span class="unit">kPa</span>
+                    </div>
+                </div>
+
+                <div class="data-card">
+                    <h2>Temperature</h2>
+                    <div class="value-display">
+                        <span class="value" id="temperature">--</span>
+                        <span class="unit">°C</span>
+                    </div>
+                </div>
+
+                <div class="data-card">
+                    <h2>Fan RPM</h2>
+                    <div class="value-display">
+                        <span class="value" id="rpm">--</span>
+                        <span class="unit">RPM</span>
+                    </div>
+                </div>
+
+                <div class="data-card">
+                    <h2>Power</h2>
+                    <div class="value-display">
+                        <span class="value" id="power">--</span>
+                        <span class="unit">W</span>
+                    </div>
+                </div>
+
+                <!-- Calculated Values -->
+                <div class="data-card calculated">
+                    <h2>Lift/Drag Ratio</h2>
+                    <div class="value-display">
+                        <span class="value" id="liftDragRatio">--</span>
+                        <span class="unit"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Control Panel (for future expansion) -->
+            <div class="control-panel">
+                <h2>Controls</h2>
+                <div class="controls-grid">
+                    <button class="control-btn" id="startBtn" disabled>Start</button>
+                    <button class="control-btn" id="stopBtn" disabled>Stop</button>
+                    <button class="control-btn" id="resetBtn" disabled>Reset</button>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <p>Last Update: <span id="timestamp">--</span></p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
