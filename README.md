@@ -121,14 +121,23 @@ sudo systemctl start windtunnel
 
 ### Development Mode (Manual)
 
+**Option 1: Using Flask development server**
 ```bash
 cd ~/windtunnel-controller
 source venv/bin/activate
 sudo python3 app.py
 ```
 
+**Option 2: Using Gunicorn (production)**
+```bash
+cd ~/windtunnel-controller
+source venv/bin/activate
+sudo gunicorn --worker-class gthread --workers 1 --threads 4 --bind 0.0.0.0:80 app:app
+```
+
 > **Note**: `sudo` is required to run on port 80. The server will be accessible at `http://<raspberry-pi-ip>/`
-> The application uses Flask-SocketIO with threading for WebSocket support, which works well for single-user or small deployments.
+> The systemd service uses Gunicorn with threaded workers for production deployment.
+> WebSocket support is provided by Flask-SocketIO with simple-websocket backend.
 
 ## Configuration
 
