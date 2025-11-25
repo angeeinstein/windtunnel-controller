@@ -79,5 +79,5 @@ if __name__ == '__main__':
     # Run on all interfaces for Raspberry Pi access
     # Use port 80 (standard HTTP port), disable debug in production
     # Note: On Linux/Raspberry Pi, running on port 80 requires sudo/root privileges
-    # When using gunicorn, this block won't be executed
-    socketio.run(app, host='0.0.0.0', port=80, debug=True)
+    # Using threaded mode for better WebSocket performance
+    socketio.run(app, host='0.0.0.0', port=80, debug=False, allow_unsafe_werkzeug=True)

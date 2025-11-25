@@ -257,7 +257,7 @@ Type=simple
 User=root
 WorkingDirectory=$INSTALL_DIR
 Environment="PATH=$VENV_DIR/bin"
-ExecStart=$VENV_DIR/bin/gunicorn --worker-class gevent -w 1 --bind 0.0.0.0:80 app:app
+ExecStart=$VENV_DIR/bin/python app.py
 Restart=always
 RestartSec=10
 StandardOutput=journal
