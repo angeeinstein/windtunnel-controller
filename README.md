@@ -132,7 +132,7 @@ sudo python3 app.py
 ```bash
 cd ~/windtunnel-controller
 source venv/bin/activate
-sudo gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:80 app:app
+sudo gunicorn --worker-class gevent -w 1 --bind 0.0.0.0:80 app:app
 ```
 
 > **Note**: `sudo` is required to run on port 80. The server will be accessible at `http://<raspberry-pi-ip>/`
