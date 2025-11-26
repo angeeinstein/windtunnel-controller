@@ -168,14 +168,17 @@ update_repository() {
     
     cd "$INSTALL_DIR" || exit 1
     
+    # Find git command (use full path for systemd compatibility)
+    GIT_CMD=$(command -v git 2>/dev/null || echo "/usr/bin/git")
+    
     # Stash any local changes
-    if ! git diff-index --quiet HEAD --; then
+    if ! $GIT_CMD diff-index --quiet HEAD -- 2>/dev/null; then
         print_info "Stashing local changes..."
-        git stash
+        $GIT_CMD stash
     fi
     
     # Pull latest changes
-    git pull origin main || {
+    $GIT_CMD pull origin main || {
         print_error "Failed to update repository"
         exit 1
     }
