@@ -52,6 +52,12 @@ header h1 {
     font-weight: 600;
 }
 
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
 .status-indicator {
     display: flex;
     align-items: center;
@@ -75,6 +81,29 @@ header h1 {
 @keyframes pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.5; }
+}
+
+.settings-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    text-decoration: none;
+    border-radius: 8px;
+    font-size: 1.1rem;
+    transition: background 0.3s;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+.settings-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.settings-btn svg {
+    width: 20px;
+    height: 20px;
 }
 
 /* Main Content */

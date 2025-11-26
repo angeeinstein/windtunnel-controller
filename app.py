@@ -50,6 +50,11 @@ def index():
     """Main control screen page."""
     return render_template('index.html')
 
+@app.route('/settings')
+def settings():
+    """Settings page."""
+    return render_template('settings.html')
+
 @app.route('/api/data')
 def get_data():
     """REST API endpoint to get current wind tunnel data."""

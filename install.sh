@@ -3,7 +3,7 @@
 ###########################################
 # Wind Tunnel Controller - Installation Script
 # Automated installation for Raspberry Pi 5
-# Supports both fresh install and updates
+# Supports fresh install, updates, and uninstall
 ###########################################
 
 set -e  # Exit on error
@@ -360,6 +360,67 @@ show_completion_info() {
     echo ""
 }
 
+# Uninstall function
+uninstall() {
+    print_header
+    echo -e "${RED}═══════════════════════════════════════════${NC}"
+    echo -e "${RED}         UNINSTALL WIND TUNNEL CONTROLLER${NC}"
+    echo -e "${RED}═══════════════════════════════════════════${NC}"
+    echo ""
+    echo -e "${YELLOW}This will completely remove:${NC}"
+    echo "  • Wind Tunnel Controller application"
+    echo "  • System service (windtunnel.service)"
+    echo "  • Installation directory: $INSTALL_DIR"
+    echo "  • All configuration files"
+    echo ""
+    echo -e "${RED}WARNING: This action cannot be undone!${NC}"
+    echo ""
+    read -p "Are you sure you want to uninstall? (yes/no): " confirm
+    
+    if [[ "$confirm" != "yes" ]]; then
+        print_info "Uninstall cancelled"
+        exit 0
+    fi
+    
+    print_step "Uninstalling Wind Tunnel Controller..."
+    
+    # Stop and disable service
+    if systemctl is-active --quiet "$SERVICE_NAME"; then
+        print_info "Stopping service..."
+        systemctl stop "$SERVICE_NAME" || true
+        print_success "Service stopped"
+    fi
+    
+    if systemctl is-enabled --quiet "$SERVICE_NAME" 2>/dev/null; then
+        print_info "Disabling service..."
+        systemctl disable "$SERVICE_NAME" || true
+        print_success "Service disabled"
+    fi
+    
+    # Remove service file
+    if [[ -f "$SERVICE_FILE" ]]; then
+        print_info "Removing service file..."
+        rm -f "$SERVICE_FILE"
+        systemctl daemon-reload
+        print_success "Service file removed"
+    fi
+    
+    # Remove installation directory
+    if [[ -d "$INSTALL_DIR" ]]; then
+        print_info "Removing installation directory..."
+        rm -rf "$INSTALL_DIR"
+        print_success "Installation directory removed"
+    fi
+    
+    echo ""
+    echo -e "${GREEN}═══════════════════════════════════════════${NC}"
+    echo -e "${GREEN}    Uninstallation Complete${NC}"
+    echo -e "${GREEN}═══════════════════════════════════════════${NC}"
+    echo ""
+    echo "Wind Tunnel Controller has been completely removed from your system."
+    echo ""
+}
+
 # Prompt for update
 prompt_update() {
     echo ""
@@ -368,9 +429,10 @@ prompt_update() {
     echo "What would you like to do?"
     echo "  1) Update to latest version"
     echo "  2) Reinstall (fresh install)"
-    echo "  3) Exit"
+    echo "  3) Uninstall completely"
+    echo "  4) Exit"
     echo ""
-    read -p "Enter your choice [1-3]: " choice
+    read -p "Enter your choice [1-4]: " choice
     
     case $choice in
         1)
@@ -387,6 +449,10 @@ prompt_update() {
             return 1  # Reinstall
             ;;
         3)
+            uninstall
+            exit 0
+            ;;
+        4)
             print_info "Exiting..."
             exit 0
             ;;
@@ -451,6 +517,12 @@ main() {
 ###########################################
 # Run Main Function
 ###########################################
+
+# Check for uninstall flag
+if [[ "$1" == "uninstall" ]] || [[ "$1" == "--uninstall" ]] || [[ "$1" == "-u" ]]; then
+    uninstall
+    exit 0
+fi
 
 # Trap errors
 trap 'print_error "An error occurred. Installation failed."; exit 1' ERR

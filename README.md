@@ -215,6 +215,30 @@ sudo bash install.sh
 
 Select option 1 (Update to latest version) when prompted.
 
+## Uninstalling
+
+To completely remove the Wind Tunnel Controller:
+
+**Option 1: Using the install script**
+```bash
+sudo bash install.sh uninstall
+```
+
+**Option 2: Interactive menu**
+```bash
+sudo bash install.sh
+```
+Then select option 3 (Uninstall completely)
+
+**Option 3: Manual uninstall**
+```bash
+sudo systemctl stop windtunnel
+sudo systemctl disable windtunnel
+sudo rm /etc/systemd/system/windtunnel.service
+sudo systemctl daemon-reload
+rm -rf ~/windtunnel-controller
+```
+
 ## Troubleshooting
 
 ### Installation Script Issues

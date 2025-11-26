@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - Wind Tunnel Control System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .settings-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .back-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            background: var(--secondary-color);
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            margin-bottom: 30px;
+            transition: background 0.3s;
+        }
+
+        .back-btn:hover {
+            background: #2980b9;
+        }
+
+        .settings-section {
+            background: var(--card-background);
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: var(--shadow);
+            margin-bottom: 20px;
+        }
+
+        .settings-section h2 {
+            color: var(--primary-color);
+            margin-bottom: 20px;
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 10px;
+        }
+
+        .setting-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .setting-row:last-child {
+            border-bottom: none;
+        }
+
+        .setting-label {
+            font-size: 1.1rem;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        .setting-description {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-top: 5px;
+        }
+
+        .setting-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .setting-input {
+            padding: 8px 12px;
+            border: 2px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 1rem;
+            min-width: 150px;
+        }
+
+        .setting-input:focus {
+            outline: none;
+            border-color: var(--secondary-color);
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 60px;
+            height: 30px;
+            background: var(--border-color);
+            border-radius: 15px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .toggle-switch.active {
+            background: var(--success-color);
+        }
+
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: white;
+            top: 3px;
+            left: 3px;
+            transition: left 0.3s;
+        }
+
+        .toggle-switch.active::after {
+            left: 33px;
+        }
+
+        .save-btn {
+            padding: 15px 40px;
+            background: var(--success-color);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.2rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s;
+            margin-top: 20px;
+        }
+
+        .save-btn:hover {
+            background: #229954;
+        }
+
+        .danger-zone {
+            border: 2px solid var(--accent-color);
+        }
+
+        .danger-zone h2 {
+            color: var(--accent-color);
+        }
+
+        .danger-btn {
+            padding: 12px 30px;
+            background: var(--accent-color);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .danger-btn:hover {
+            background: #c0392b;
+        }
+    </style>
+</head>
+<body>
+    <div class="settings-container">
+        <a href="/" class="back-btn">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M19 12H5M12 19l-7-7 7-7"/>
+            </svg>
+            Back to Dashboard
+        </a>
+
+        <h1 style="color: var(--primary-color); margin-bottom: 30px;">Settings</h1>
+
+        <!-- Display Settings -->
+        <div class="settings-section">
+            <h2>Display Settings</h2>
+            
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">Update Interval</div>
+                    <div class="setting-description">How often data updates (milliseconds)</div>
+                </div>
+                <div class="setting-control">
+                    <input type="number" class="setting-input" value="500" min="100" max="5000" step="100" id="updateInterval">
+                    <span>ms</span>
+                </div>
+            </div>
+
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">Dark Mode</div>
+                    <div class="setting-description">Toggle dark/light theme</div>
+                </div>
+                <div class="setting-control">
+                    <div class="toggle-switch" id="darkMode"></div>
+                </div>
+            </div>
+
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">Show Decimal Places</div>
+                    <div class="setting-description">Number of decimal places for measurements</div>
+                </div>
+                <div class="setting-control">
+                    <input type="number" class="setting-input" value="2" min="0" max="5" id="decimalPlaces">
+                </div>
+            </div>
+        </div>
+
+        <!-- Measurement Settings -->
+        <div class="settings-section">
+            <h2>Measurement Settings</h2>
+            
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">Velocity Unit</div>
+                    <div class="setting-description">Display velocity in m/s or km/h</div>
+                </div>
+                <div class="setting-control">
+                    <select class="setting-input" id="velocityUnit">
+                        <option value="ms">m/s</option>
+                        <option value="kmh">km/h</option>
+                        <option value="mph">mph</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">Temperature Unit</div>
+                    <div class="setting-description">Display temperature in Celsius or Fahrenheit</div>
+                </div>
+                <div class="setting-control">
+                    <select class="setting-input" id="temperatureUnit">
+                        <option value="c">Celsius (°C)</option>
+                        <option value="f">Fahrenheit (°F)</option>
+                        <option value="k">Kelvin (K)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">Auto-Calculate Lift/Drag</div>
+                    <div class="setting-description">Automatically display lift-to-drag ratio</div>
+                </div>
+                <div class="setting-control">
+                    <div class="toggle-switch active" id="autoCalculate"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- System Settings -->
+        <div class="settings-section">
+            <h2>System Settings</h2>
+            
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">Data Logging</div>
+                    <div class="setting-description">Enable automatic data logging to file</div>
+                </div>
+                <div class="setting-control">
+                    <div class="toggle-switch" id="dataLogging"></div>
+                </div>
+            </div>
+
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">Alert Threshold - High Velocity</div>
+                    <div class="setting-description">Alert when velocity exceeds (m/s)</div>
+                </div>
+                <div class="setting-control">
+                    <input type="number" class="setting-input" value="50" min="0" max="100" id="highVelocity">
+                    <span>m/s</span>
+                </div>
+            </div>
+
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">System Name</div>
+                    <div class="setting-description">Custom name for this wind tunnel</div>
+                </div>
+                <div class="setting-control">
+                    <input type="text" class="setting-input" value="Wind Tunnel Alpha" id="systemName" style="min-width: 250px;">
+                </div>
+            </div>
+        </div>
+
+        <!-- Danger Zone -->
+        <div class="settings-section danger-zone">
+            <h2>Danger Zone</h2>
+            
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">Reset All Settings</div>
+                    <div class="setting-description">Restore all settings to factory defaults</div>
+                </div>
+                <div class="setting-control">
+                    <button class="danger-btn" onclick="resetSettings()">Reset to Defaults</button>
+                </div>
+            </div>
+
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">Clear Data Logs</div>
+                    <div class="setting-description">Delete all stored measurement data</div>
+                </div>
+                <div class="setting-control">
+                    <button class="danger-btn" onclick="clearLogs()">Clear Logs</button>
+                </div>
+            </div>
+        </div>
+
+        <button class="save-btn" onclick="saveSettings()">Save All Settings</button>
+    </div>
+
+    <script>
+        // Toggle switches
+        document.querySelectorAll('.toggle-switch').forEach(toggle => {
+            toggle.addEventListener('click', function() {
+                this.classList.toggle('active');
+            });
+        });
+
+        // Save settings
+        function saveSettings() {
+            const settings = {
+                updateInterval: document.getElementById('updateInterval').value,
+                darkMode: document.getElementById('darkMode').classList.contains('active'),
+                decimalPlaces: document.getElementById('decimalPlaces').value,
+                velocityUnit: document.getElementById('velocityUnit').value,
+                temperatureUnit: document.getElementById('temperatureUnit').value,
+                autoCalculate: document.getElementById('autoCalculate').classList.contains('active'),
+                dataLogging: document.getElementById('dataLogging').classList.contains('active'),
+                highVelocity: document.getElementById('highVelocity').value,
+                systemName: document.getElementById('systemName').value
+            };
+
+            // Store in localStorage for now (can be sent to server later)
+            localStorage.setItem('windtunnelSettings', JSON.stringify(settings));
+            
+            alert('Settings saved successfully!');
+            console.log('Saved settings:', settings);
+        }
+
+        // Reset settings
+        function resetSettings() {
+            if (confirm('Are you sure you want to reset all settings to defaults?')) {
+                localStorage.removeItem('windtunnelSettings');
+                location.reload();
+            }
+        }
+
+        // Clear logs
+        function clearLogs() {
+            if (confirm('Are you sure you want to clear all data logs? This cannot be undone.')) {
+                // TODO: Implement server-side log clearing
+                alert('Data logs cleared!');
+                console.log('Logs cleared');
+            }
+        }
+
+        // Load saved settings on page load
+        window.addEventListener('DOMContentLoaded', function() {
+            const savedSettings = localStorage.getItem('windtunnelSettings');
+            if (savedSettings) {
+                const settings = JSON.parse(savedSettings);
+                
+                document.getElementById('updateInterval').value = settings.updateInterval || 500;
+                document.getElementById('decimalPlaces').value = settings.decimalPlaces || 2;
+                document.getElementById('velocityUnit').value = settings.velocityUnit || 'ms';
+                document.getElementById('temperatureUnit').value = settings.temperatureUnit || 'c';
+                document.getElementById('highVelocity').value = settings.highVelocity || 50;
+                document.getElementById('systemName').value = settings.systemName || 'Wind Tunnel Alpha';
+                
+                if (settings.darkMode) document.getElementById('darkMode').classList.add('active');
+                if (settings.autoCalculate !== false) document.getElementById('autoCalculate').classList.add('active');
+                if (settings.dataLogging) document.getElementById('dataLogging').classList.add('active');
+            }
+        });
+    </script>
+</body>
+</html>
