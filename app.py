@@ -148,41 +148,50 @@ def trigger_update():
             global update_in_progress
             try:
                 socketio.emit('update_progress', {'step': 'Running install script in auto-update mode...', 'type': 'info'})
+                socketio.sleep(0.1)  # Give time for message to send
                 
                 # Run install.sh with auto-update flag (non-interactive)
                 # Use Popen to capture output in real-time
+                import os
+                env = os.environ.copy()
+                env['PYTHONUNBUFFERED'] = '1'  # Disable Python output buffering
+                
                 process = subprocess.Popen(
                     ['bash', script_path, 'auto-update'],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
-                    bufsize=1,
+                    bufsize=0,  # Unbuffered
                     universal_newlines=True,
-                    cwd=os.path.dirname(script_path)
+                    cwd=os.path.dirname(script_path),
+                    env=env
                 )
                 
                 # Read output line by line in real-time
-                for line in iter(process.stdout.readline, ''):
-                    if not line:
+                while True:
+                    line = process.stdout.readline()
+                    if not line and process.poll() is not None:
                         break
                     
-                    clean_line = line.strip()
-                    # Skip empty lines, comment lines, and ANSI escape sequences
-                    if clean_line and not clean_line.startswith('#'):
-                        # Remove ANSI color codes
-                        import re
-                        clean_line = re.sub(r'\x1b\[[0-9;]*m', '', clean_line)
-                        
-                        # Determine message type
-                        msg_type = 'info'
-                        if '✓' in clean_line or 'success' in clean_line.lower():
-                            msg_type = 'success'
-                        elif '✗' in clean_line or 'error' in clean_line.lower() or 'fail' in clean_line.lower():
-                            msg_type = 'error'
-                        elif '⚠' in clean_line or 'warning' in clean_line.lower():
-                            msg_type = 'warning'
-                        
-                        socketio.emit('update_progress', {'step': clean_line, 'type': msg_type})
+                    if line:
+                        clean_line = line.strip()
+                        # Skip empty lines, comment lines, and ANSI escape sequences
+                        if clean_line and not clean_line.startswith('#'):
+                            # Remove ANSI color codes
+                            import re
+                            clean_line = re.sub(r'\x1b\[[0-9;]*m', '', clean_line)
+                            
+                            # Determine message type
+                            msg_type = 'info'
+                            if '✓' in clean_line or 'success' in clean_line.lower():
+                                msg_type = 'success'
+                            elif '✗' in clean_line or 'error' in clean_line.lower() or 'fail' in clean_line.lower():
+                                msg_type = 'error'
+                            elif '⚠' in clean_line or 'warning' in clean_line.lower():
+                                msg_type = 'warning'
+                            
+                            socketio.emit('update_progress', {'step': clean_line, 'type': msg_type})
+                            socketio.sleep(0.01)  # Small delay to ensure message is sent
                 
                 # Wait for process to complete
                 process.wait()
@@ -190,7 +199,7 @@ def trigger_update():
                 if process.returncode == 0:
                     socketio.emit('update_progress', {'step': '✓ Update completed successfully', 'type': 'success'})
                 else:
-                    socketio.emit('update_progress', {'step': f'Update exited with code {process.returncode}', 'type': 'warning'})
+                    socketio.emit('update_progress', {'step': f'⚠ Update exited with code {process.returncode}', 'type': 'warning'})
                     
             except Exception as e:
                 socketio.emit('update_progress', {'step': f'Update error: {str(e)}', 'type': 'error'})

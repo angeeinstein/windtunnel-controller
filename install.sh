@@ -526,6 +526,7 @@ fi
 
 # Check for auto-update flag (non-interactive)
 if [[ "$1" == "auto-update" ]] || [[ "$1" == "--auto-update" ]]; then
+    echo "=== AUTO-UPDATE MODE STARTED ==="
     print_header
     print_info "Running automatic update (non-interactive mode)..."
     
@@ -537,16 +538,24 @@ if [[ "$1" == "auto-update" ]] || [[ "$1" == "--auto-update" ]]; then
         exit 1
     fi
     
+    echo "Step 1: Updating repository..."
     # Perform update steps
     update_repository
+    
+    echo "Step 2: Setting up virtual environment..."
     setup_venv
+    
+    echo "Step 3: Installing Python packages..."
     install_python_packages
+    
+    echo "Step 4: Updating service configuration..."
     create_service
     
     print_success "Update completed successfully!"
     print_info "Restarting service..."
     systemctl restart "$SERVICE_NAME" 2>/dev/null || true
     
+    echo "=== AUTO-UPDATE MODE FINISHED ==="
     exit 0
 fi
 
