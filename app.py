@@ -73,18 +73,31 @@ def trigger_update():
     import os
     
     try:
-        # Path to install script
-        script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'install.sh')
+        # Get the project root directory (where app.py is located)
+        project_root = os.path.dirname(os.path.abspath(__file__))
+        script_path = os.path.join(project_root, 'install.sh')
+        
+        # Check if install.sh exists
+        if not os.path.exists(script_path):
+            # Try parent directory (in case we're in a subdirectory)
+            script_path = os.path.join(os.path.dirname(project_root), 'install.sh')
+            if not os.path.exists(script_path):
+                return jsonify({'status': 'error', 'message': 'install.sh not found'}), 404
         
         # Run update in background
         # This will update the repo, reinstall dependencies, and restart the service
         subprocess.Popen(
-            ['bash', '-c', f'cd "$(dirname "{script_path}")" && echo "1" | sudo bash install.sh'],
+            ['sudo', 'bash', script_path],
+            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            start_new_session=True
-        )
+            start_new_session=True,
+            text=True
+        ).communicate(input='1\n', timeout=1)  # Send "1" for update option
         
+        return jsonify({'status': 'success', 'message': 'Update started. The service will restart automatically.'})
+    except subprocess.TimeoutExpired:
+        # This is expected - the process continues in background
         return jsonify({'status': 'success', 'message': 'Update started. The service will restart automatically.'})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500

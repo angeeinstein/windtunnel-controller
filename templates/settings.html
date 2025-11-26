@@ -158,9 +158,80 @@
         .danger-btn:hover {
             background: #c0392b;
         }
+
+        /* Notification system */
+        .notification {
+            position: fixed;
+            top: 80px;
+            right: 30px;
+            min-width: 300px;
+            max-width: 500px;
+            padding: 20px 25px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+            border-left: 5px solid var(--secondary-color);
+            z-index: 2000;
+            opacity: 0;
+            transform: translateX(400px);
+            transition: all 0.3s ease;
+        }
+
+        .notification.show {
+            opacity: 1;
+            transform: translateX(0);
+        }
+
+        .notification.success {
+            border-left-color: var(--success-color);
+        }
+
+        .notification.error {
+            border-left-color: var(--accent-color);
+        }
+
+        .notification.warning {
+            border-left-color: #f39c12;
+        }
+
+        .notification-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .notification-title {
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: var(--text-primary);
+        }
+
+        .notification-close {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 0;
+            width: 24px;
+            height: 24px;
+            line-height: 1;
+        }
+
+        .notification-close:hover {
+            color: var(--text-primary);
+        }
+
+        .notification-message {
+            color: var(--text-secondary);
+            font-size: 1rem;
+            line-height: 1.5;
+        }
     </style>
 </head>
 <body>
+    <div id="notificationContainer"></div>
     <div class="settings-container">
         <a href="/" class="back-btn">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -325,6 +396,77 @@
     </div>
 
     <script>
+        // Notification system
+        function showNotification(title, message, type = 'success') {
+            const container = document.getElementById('notificationContainer');
+            
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.innerHTML = `
+                <div class="notification-header">
+                    <div class="notification-title">${title}</div>
+                    <button class="notification-close" onclick="this.parentElement.parentElement.remove()">×</button>
+                </div>
+                <div class="notification-message">${message}</div>
+            `;
+            
+            container.appendChild(notification);
+            
+            // Trigger animation
+            setTimeout(() => notification.classList.add('show'), 10);
+            
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                notification.classList.remove('show');
+                setTimeout(() => notification.remove(), 300);
+            }, 5000);
+        }
+
+        function confirmAction(message, onConfirm) {
+            const overlay = document.createElement('div');
+            overlay.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0, 0, 0, 0.5);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 3000;
+            `;
+            
+            const dialog = document.createElement('div');
+            dialog.style.cssText = `
+                background: white;
+                padding: 30px;
+                border-radius: 10px;
+                max-width: 500px;
+                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            `;
+            dialog.innerHTML = `
+                <h3 style="margin: 0 0 15px 0; color: var(--primary-color);">Confirm Action</h3>
+                <p style="margin: 0 0 25px 0; color: var(--text-secondary); line-height: 1.6;">${message.replace(/\n/g, '<br>')}</p>
+                <div style="display: flex; gap: 15px; justify-content: flex-end;">
+                    <button onclick="this.getRootNode().host.remove()" style="padding: 12px 30px; background: var(--border-color); color: var(--text-primary); border: none; border-radius: 8px; cursor: pointer; font-size: 1rem; font-weight: 600;">Cancel</button>
+                    <button id="confirmBtn" style="padding: 12px 30px; background: var(--secondary-color); color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 1rem; font-weight: 600;">Confirm</button>
+                </div>
+            `;
+            
+            overlay.appendChild(dialog);
+            document.body.appendChild(overlay);
+            
+            dialog.querySelector('#confirmBtn').onclick = () => {
+                overlay.remove();
+                onConfirm();
+            };
+            
+            overlay.onclick = (e) => {
+                if (e.target === overlay) overlay.remove();
+            };
+        }
+
         // Toggle switches
         document.querySelectorAll('.toggle-switch').forEach(toggle => {
             toggle.addEventListener('click', function() {
@@ -349,30 +491,33 @@
             // Store in localStorage for now (can be sent to server later)
             localStorage.setItem('windtunnelSettings', JSON.stringify(settings));
             
-            alert('Settings saved successfully!');
+            showNotification('Settings Saved', 'Your settings have been saved successfully!', 'success');
             console.log('Saved settings:', settings);
         }
 
         // Reset settings
         function resetSettings() {
-            if (confirm('Are you sure you want to reset all settings to defaults?')) {
+            confirmAction('Are you sure you want to reset all settings to defaults?', () => {
                 localStorage.removeItem('windtunnelSettings');
-                location.reload();
-            }
+                showNotification('Settings Reset', 'All settings have been reset to defaults. Reloading...', 'success');
+                setTimeout(() => location.reload(), 1500);
+            });
         }
 
         // Clear logs
         function clearLogs() {
-            if (confirm('Are you sure you want to clear all data logs? This cannot be undone.')) {
+            confirmAction('Are you sure you want to clear all data logs? This cannot be undone.', () => {
                 // TODO: Implement server-side log clearing
-                alert('Data logs cleared!');
+                showNotification('Logs Cleared', 'All data logs have been cleared.', 'success');
                 console.log('Logs cleared');
-            }
+            });
         }
 
         // Update system
         function updateSystem() {
-            if (confirm('This will update the Wind Tunnel Controller to the latest version from GitHub.\n\nThe system will restart automatically. Continue?')) {
+            confirmAction('This will update the Wind Tunnel Controller to the latest version from GitHub.\n\nThe system will restart automatically. Continue?', () => {
+                showNotification('Update Starting', 'Checking for updates and downloading latest version...', 'warning');
+                
                 fetch('/api/update', {
                     method: 'POST',
                     headers: {
@@ -382,17 +527,21 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data.status === 'success') {
-                        alert('Update started!\n\nThe system will restart in a few moments. Please wait about 30 seconds and refresh the page.');
+                        showNotification(
+                            'Update In Progress', 
+                            'The system is updating and will restart in a few moments. Please wait about 30 seconds and refresh the page.',
+                            'success'
+                        );
                         console.log('Update initiated:', data.message);
                     } else {
-                        alert('Update failed: ' + data.message);
+                        showNotification('Update Failed', data.message, 'error');
                     }
                 })
                 .catch(error => {
-                    alert('Update request failed: ' + error);
+                    showNotification('Update Error', 'Failed to initiate update: ' + error, 'error');
                     console.error('Update error:', error);
                 });
-            }
+            });
         }
 
         // Load saved settings on page load
