@@ -284,6 +284,16 @@
                     <input type="text" class="setting-input" value="Wind Tunnel Alpha" id="systemName" style="min-width: 250px;">
                 </div>
             </div>
+
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">System Update</div>
+                    <div class="setting-description">Update to the latest version from GitHub</div>
+                </div>
+                <div class="setting-control">
+                    <button class="save-btn" onclick="updateSystem()" style="margin: 0; padding: 12px 30px; font-size: 1.1rem;">Check for Updates</button>
+                </div>
+            </div>
         </div>
 
         <!-- Danger Zone -->
@@ -357,6 +367,31 @@
                 // TODO: Implement server-side log clearing
                 alert('Data logs cleared!');
                 console.log('Logs cleared');
+            }
+        }
+
+        // Update system
+        function updateSystem() {
+            if (confirm('This will update the Wind Tunnel Controller to the latest version from GitHub.\n\nThe system will restart automatically. Continue?')) {
+                fetch('/api/update', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert('Update started!\n\nThe system will restart in a few moments. Please wait about 30 seconds and refresh the page.');
+                        console.log('Update initiated:', data.message);
+                    } else {
+                        alert('Update failed: ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    alert('Update request failed: ' + error);
+                    console.error('Update error:', error);
+                });
             }
         }
 

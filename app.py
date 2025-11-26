@@ -66,6 +66,29 @@ def settings():
     """Settings page."""
     return render_template('settings.html')
 
+@app.route('/api/update', methods=['POST'])
+def trigger_update():
+    """Trigger system update via install script."""
+    import subprocess
+    import os
+    
+    try:
+        # Path to install script
+        script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'install.sh')
+        
+        # Run update in background
+        # This will update the repo, reinstall dependencies, and restart the service
+        subprocess.Popen(
+            ['bash', '-c', f'cd "$(dirname "{script_path}")" && echo "1" | sudo bash install.sh'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True
+        )
+        
+        return jsonify({'status': 'success', 'message': 'Update started. The service will restart automatically.'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 @app.route('/api/data')
 def get_data():
     """REST API endpoint to get current wind tunnel data."""
