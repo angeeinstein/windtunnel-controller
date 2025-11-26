@@ -141,53 +141,73 @@ def trigger_update():
             update_in_progress = True
         
         # Emit initial status via WebSocket
-        socketio.emit('update_progress', {'step': 'Starting update...'})
+        socketio.emit('update_progress', {'step': 'Starting update process...', 'type': 'info'})
         
-        # Run update in background (already running as root via systemd)
-        process = subprocess.Popen(
-            [bash_path, script_path],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-            text=True,
-            cwd=os.path.dirname(script_path),
-            bufsize=1
-        )
-        
-        # Send "1" for update option
-        try:
-            process.stdin.write('1\n')
-            process.stdin.flush()
-            process.stdin.close()
-        except:
-            pass
-        
-        # Start a thread to read output and emit progress
-        def stream_output():
+        # Start a thread to run the update
+        def run_update():
             global update_in_progress
             try:
+                socketio.emit('update_progress', {'step': 'Running install script...', 'type': 'info'})
+                
+                # Run install.sh with update option
+                # Use Popen to capture output in real-time
+                process = subprocess.Popen(
+                    ['bash', script_path],
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                    universal_newlines=True,
+                    cwd=os.path.dirname(script_path)
+                )
+                
+                # Send "1" for update option
+                process.stdin.write('1\n')
+                process.stdin.flush()
+                process.stdin.close()
+                
+                # Read output line by line in real-time
                 for line in iter(process.stdout.readline, ''):
-                    if line:
-                        # Filter and emit meaningful progress messages
-                        clean_line = line.strip()
-                        if clean_line and not clean_line.startswith('#'):
-                            # Emit progress updates
-                            if '✓' in clean_line or 'success' in clean_line.lower():
-                                socketio.emit('update_progress', {'step': clean_line, 'type': 'success'})
-                            elif '✗' in clean_line or 'error' in clean_line.lower() or 'fail' in clean_line.lower():
-                                socketio.emit('update_progress', {'step': clean_line, 'type': 'error'})
-                            elif 'STEP' in clean_line or '➜' in clean_line:
-                                socketio.emit('update_progress', {'step': clean_line, 'type': 'info'})
+                    if not line:
+                        break
+                    
+                    clean_line = line.strip()
+                    # Skip empty lines, comment lines, and ANSI escape sequences
+                    if clean_line and not clean_line.startswith('#'):
+                        # Remove ANSI color codes
+                        import re
+                        clean_line = re.sub(r'\x1b\[[0-9;]*m', '', clean_line)
+                        
+                        # Determine message type
+                        msg_type = 'info'
+                        if '✓' in clean_line or 'success' in clean_line.lower():
+                            msg_type = 'success'
+                        elif '✗' in clean_line or 'error' in clean_line.lower() or 'fail' in clean_line.lower():
+                            msg_type = 'error'
+                        elif '⚠' in clean_line or 'warning' in clean_line.lower():
+                            msg_type = 'warning'
+                        
+                        socketio.emit('update_progress', {'step': clean_line, 'type': msg_type})
+                
+                # Wait for process to complete
+                process.wait()
+                
+                if process.returncode == 0:
+                    socketio.emit('update_progress', {'step': '✓ Update completed successfully', 'type': 'success'})
+                else:
+                    socketio.emit('update_progress', {'step': f'Update exited with code {process.returncode}', 'type': 'warning'})
+                    
+            except Exception as e:
+                socketio.emit('update_progress', {'step': f'Update error: {str(e)}', 'type': 'error'})
             finally:
                 with update_lock:
                     update_in_progress = False
-                socketio.emit('update_progress', {'step': 'Update complete', 'type': 'complete'})
         
         import threading
-        threading.Thread(target=stream_output, daemon=True).start()
+        threading.Thread(target=run_update, daemon=True).start()
         
-        return jsonify({'status': 'success', 'message': 'Update started. The service will restart automatically.'})
+        return jsonify({'status': 'success', 'message': 'Update started. Watch progress below.'})
     except Exception as e:
         with update_lock:
             update_in_progress = False

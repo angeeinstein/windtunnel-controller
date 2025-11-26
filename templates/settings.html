@@ -625,7 +625,7 @@
                         console.log('Update initiated:', data.message);
                         
                         // Countdown timer
-                        let countdown = 35;
+                        let countdown = 45;
                         const countdownInterval = setInterval(() => {
                             countdown--;
                             const messageEl = updateNotification.querySelector('.notification-message');
@@ -639,12 +639,12 @@
                             }
                         }, 1000);
                         
-                        // Auto-refresh after 35 seconds
+                        // Auto-refresh after 45 seconds
                         setTimeout(() => {
                             clearInterval(countdownInterval);
                             updateInProgress = false;
                             location.reload();
-                        }, 35000);
+                        }, 45000);
                     } else if (data.status === 'info') {
                         updateInProgress = false;
                         showNotification('Already Up to Date', data.message, 'success');
