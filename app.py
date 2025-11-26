@@ -6,6 +6,17 @@ from threading import Lock
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key-here'
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0  # Disable caching in development
+
+# Add cache control headers
+@app.after_request
+def add_header(response):
+    """Add headers to prevent caching of static files."""
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '-1'
+    return response
+
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Thread lock for data updates
