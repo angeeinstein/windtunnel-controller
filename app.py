@@ -156,9 +156,22 @@ def trigger_update():
                 env = os.environ.copy()
                 env['PYTHONUNBUFFERED'] = '1'  # Disable Python output buffering
                 
-                # Use sh instead of bash for better compatibility
+                # Find shell executable - try common locations
+                shell_cmd = None
+                for shell in ['/bin/bash', '/usr/bin/bash', '/bin/sh', '/usr/bin/sh']:
+                    if os.path.exists(shell):
+                        shell_cmd = shell
+                        break
+                
+                if not shell_cmd:
+                    socketio.emit('update_progress', {'step': 'Error: No shell found (bash/sh)', 'type': 'error'})
+                    return
+                
+                socketio.emit('update_progress', {'step': f'Using shell: {shell_cmd}', 'type': 'info'})
+                
+                # Use found shell
                 process = subprocess.Popen(
-                    ['sh', script_path, 'auto-update'],
+                    [shell_cmd, script_path, 'auto-update'],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
