@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, Response
 from flask_socketio import SocketIO, emit
 import random
 import time
@@ -22,6 +22,10 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 # Thread lock for data updates
 thread_lock = Lock()
 background_thread = None
+
+# Update status tracking
+update_in_progress = False
+update_lock = Lock()
 
 # Simulated wind tunnel data (replace with actual sensor readings later)
 wind_tunnel_data = {
@@ -72,6 +76,12 @@ def trigger_update():
     import subprocess
     import os
     import shutil
+    
+    global update_in_progress
+    
+    with update_lock:
+        if update_in_progress:
+            return jsonify({'status': 'error', 'message': 'Update already in progress. Please wait.'}), 409
     
     try:
         # Get the project root directory (where app.py is located)
@@ -126,27 +136,61 @@ def trigger_update():
         if not bash_path:
             return jsonify({'status': 'error', 'message': 'bash executable not found'}), 500
         
+        # Mark update as in progress
+        with update_lock:
+            update_in_progress = True
+        
+        # Emit initial status via WebSocket
+        socketio.emit('update_progress', {'step': 'Starting update...'})
+        
         # Run update in background (already running as root via systemd)
         process = subprocess.Popen(
             [bash_path, script_path],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             start_new_session=True,
             text=True,
-            cwd=os.path.dirname(script_path)
+            cwd=os.path.dirname(script_path),
+            bufsize=1
         )
         
-        # Send "1" for update option in non-blocking way
+        # Send "1" for update option
         try:
             process.stdin.write('1\n')
             process.stdin.flush()
             process.stdin.close()
         except:
-            pass  # Process may have already started, that's fine
+            pass
+        
+        # Start a thread to read output and emit progress
+        def stream_output():
+            global update_in_progress
+            try:
+                for line in iter(process.stdout.readline, ''):
+                    if line:
+                        # Filter and emit meaningful progress messages
+                        clean_line = line.strip()
+                        if clean_line and not clean_line.startswith('#'):
+                            # Emit progress updates
+                            if '✓' in clean_line or 'success' in clean_line.lower():
+                                socketio.emit('update_progress', {'step': clean_line, 'type': 'success'})
+                            elif '✗' in clean_line or 'error' in clean_line.lower() or 'fail' in clean_line.lower():
+                                socketio.emit('update_progress', {'step': clean_line, 'type': 'error'})
+                            elif 'STEP' in clean_line or '➜' in clean_line:
+                                socketio.emit('update_progress', {'step': clean_line, 'type': 'info'})
+            finally:
+                with update_lock:
+                    update_in_progress = False
+                socketio.emit('update_progress', {'step': 'Update complete', 'type': 'complete'})
+        
+        import threading
+        threading.Thread(target=stream_output, daemon=True).start()
         
         return jsonify({'status': 'success', 'message': 'Update started. The service will restart automatically.'})
     except Exception as e:
+        with update_lock:
+            update_in_progress = False
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/api/version')

@@ -267,6 +267,35 @@
         .notification-text {
             flex: 1;
         }
+
+        /* Update progress log */
+        .progress-log {
+            margin-top: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.05);
+            border-radius: 6px;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+
+        .progress-log-line {
+            padding: 3px 0;
+            color: var(--text-secondary);
+        }
+
+        .progress-log-line.success {
+            color: var(--success-color);
+        }
+
+        .progress-log-line.error {
+            color: var(--accent-color);
+        }
+
+        .progress-log-line.info {
+            color: var(--secondary-color);
+        }
     </style>
 </head>
 <body>
@@ -565,15 +594,21 @@
         }
 
         // Update system
+        let updateInProgress = false;
         function updateSystem() {
+            if (updateInProgress) {
+                showNotification('Update In Progress', 'An update is already running. Please wait.', 'warning');
+                return;
+            }
+            
             confirmAction('This will update the Wind Tunnel Controller to the latest version from GitHub.\n\nThe system will restart automatically. Continue?', () => {
+                updateInProgress = true;
                 const checkingNotification = showNotification('Checking for Updates', 'Fetching latest version information...', 'warning', true);
                 
                 fetch('/api/update', {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json'
-                    }
+                        'Content-Type': 'application/json'}
                 })
                 .then(response => response.json())
                 .then(data => {
@@ -583,7 +618,7 @@
                     if (data.status === 'success') {
                         const updateNotification = showNotification(
                             'Update In Progress', 
-                            'Installing updates and restarting service... Page will refresh automatically in 35 seconds.',
+                            'Installing updates and restarting service... Page will refresh automatically in 35 seconds.<div class="progress-log" id="progressLog"></div>',
                             'warning',
                             true // Show spinner
                         );
@@ -595,7 +630,9 @@
                             countdown--;
                             const messageEl = updateNotification.querySelector('.notification-message');
                             if (messageEl) {
-                                messageEl.textContent = `Installing updates and restarting service... Page will refresh in ${countdown} seconds.`;
+                                const logDiv = messageEl.querySelector('#progressLog');
+                                const logHTML = logDiv ? logDiv.outerHTML : '';
+                                messageEl.innerHTML = `Installing updates and restarting service... Page will refresh in ${countdown} seconds.${logHTML}`;
                             }
                             if (countdown <= 0) {
                                 clearInterval(countdownInterval);
@@ -605,15 +642,19 @@
                         // Auto-refresh after 35 seconds
                         setTimeout(() => {
                             clearInterval(countdownInterval);
+                            updateInProgress = false;
                             location.reload();
                         }, 35000);
                     } else if (data.status === 'info') {
+                        updateInProgress = false;
                         showNotification('Already Up to Date', data.message, 'success');
                     } else {
+                        updateInProgress = false;
                         showNotification('Update Failed', data.message, 'error');
                     }
                 })
                 .catch(error => {
+                    updateInProgress = false;
                     // Remove checking notification
                     checkingNotification.remove();
                     showNotification('Update Error', 'Failed to initiate update: ' + error, 'error');
@@ -621,6 +662,18 @@
                 });
             });
         }
+
+        // Listen for update progress via WebSocket
+        socket.on('update_progress', (data) => {
+            const progressLog = document.getElementById('progressLog');
+            if (progressLog) {
+                const logLine = document.createElement('div');
+                logLine.className = `progress-log-line ${data.type || ''}`;
+                logLine.textContent = data.step;
+                progressLog.appendChild(logLine);
+                progressLog.scrollTop = progressLog.scrollHeight;
+            }
+        });
 
         // Load saved settings on page load
         window.addEventListener('DOMContentLoaded', function() {
