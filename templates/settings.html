@@ -643,52 +643,63 @@
                         );
                         console.log('Update initiated:', data.message);
                         
-                        // Start polling for server availability after 5 seconds
+                        // Start polling for server availability immediately
                         let pollAttempts = 0;
-                        const maxPollTime = 40; // Maximum 40 seconds of polling
+                        let serverWasDown = false;
+                        const maxPollTime = 45; // Maximum 45 seconds of polling
                         
-                        setTimeout(() => {
-                            const countdownText = document.getElementById('countdownText');
-                            if (countdownText) {
-                                countdownText.textContent = 'Waiting for server to restart...';
-                            }
+                        const pollInterval = setInterval(() => {
+                            pollAttempts++;
                             
-                            // Poll server every second
-                            const pollInterval = setInterval(() => {
-                                pollAttempts++;
-                                
-                                // Try to fetch from server
-                                fetch('/api/version', { method: 'GET', cache: 'no-cache' })
-                                    .then(response => {
-                                        if (response.ok) {
-                                            // Server is back!
-                                            clearInterval(pollInterval);
-                                            const countdownText = document.getElementById('countdownText');
-                                            if (countdownText) {
-                                                countdownText.textContent = 'Server restarted successfully! Reloading page...';
-                                            }
-                                            setTimeout(() => {
-                                                updateInProgress = false;
-                                                location.reload(true);
-                                            }, 1000);
-                                        }
-                                    })
-                                    .catch(() => {
-                                        // Server not ready yet, keep polling
+                            // Try to fetch from server with short timeout
+                            const controller = new AbortController();
+                            const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
+                            
+                            fetch('/api/version', { 
+                                method: 'GET', 
+                                cache: 'no-cache',
+                                signal: controller.signal 
+                            })
+                                .then(response => {
+                                    clearTimeout(timeoutId);
+                                    if (response.ok && serverWasDown) {
+                                        // Server is back online after being down!
+                                        clearInterval(pollInterval);
                                         const countdownText = document.getElementById('countdownText');
                                         if (countdownText) {
-                                            countdownText.textContent = `Waiting for server to restart... (${pollAttempts}s)`;
+                                            countdownText.textContent = 'Server restarted successfully! Reloading page...';
                                         }
-                                    });
-                                
-                                // Stop polling after max time
-                                if (pollAttempts >= maxPollTime) {
-                                    clearInterval(pollInterval);
+                                        setTimeout(() => {
+                                            updateInProgress = false;
+                                            location.reload(true);
+                                        }, 500);
+                                    } else if (!response.ok) {
+                                        serverWasDown = true;
+                                    }
+                                })
+                                .catch(() => {
+                                    clearTimeout(timeoutId);
+                                    serverWasDown = true;
+                                    // Server not ready yet, keep polling
+                                    const countdownText = document.getElementById('countdownText');
+                                    if (countdownText) {
+                                        countdownText.textContent = `Waiting for server to restart... (${pollAttempts}s)`;
+                                    }
+                                });
+                            
+                            // Stop polling after max time and reload anyway
+                            if (pollAttempts >= maxPollTime) {
+                                clearInterval(pollInterval);
+                                const countdownText = document.getElementById('countdownText');
+                                if (countdownText) {
+                                    countdownText.textContent = 'Reloading page...';
+                                }
+                                setTimeout(() => {
                                     updateInProgress = false;
                                     location.reload(true);
-                                }
-                            }, 1000);
-                        }, 5000); // Wait 5 seconds before starting to poll
+                                }, 500);
+                            }
+                        }, 1000);
                     } else if (data.status === 'info') {
                         updateInProgress = false;
                         showNotification('Already Up to Date', data.message, 'success');
