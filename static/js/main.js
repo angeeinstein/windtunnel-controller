@@ -27,6 +27,27 @@ function formatTimestamp(timestamp) {
     });
 }
 
+// Format number with European formatting (comma for decimal, space for thousands)
+function formatNumber(number, decimals = 2) {
+    if (number === null || number === undefined || isNaN(number)) {
+        return '--';
+    }
+    
+    // Format with fixed decimals
+    const fixed = Number(number).toFixed(decimals);
+    
+    // Split into integer and decimal parts
+    const parts = fixed.split('.');
+    const integerPart = parts[0];
+    const decimalPart = parts[1];
+    
+    // Add space for thousands separator
+    const withSpaces = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    
+    // Join with comma as decimal separator
+    return decimalPart ? `${withSpaces},${decimalPart}` : withSpaces;
+}
+
 // Calculate lift/drag ratio
 function calculateLiftDragRatio(lift, drag) {
     if (drag === 0 || drag === null || drag === undefined) {
@@ -39,18 +60,19 @@ function calculateLiftDragRatio(lift, drag) {
 // Update display with new data
 function updateDisplay(data) {
     // Update primary measurements
-    elements.velocity.textContent = data.velocity.toFixed(2);
-    elements.lift.textContent = data.lift.toFixed(2);
-    elements.drag.textContent = data.drag.toFixed(2);
+    elements.velocity.textContent = formatNumber(data.velocity, 2);
+    elements.lift.textContent = formatNumber(data.lift, 2);
+    elements.drag.textContent = formatNumber(data.drag, 2);
     
     // Update secondary measurements
-    elements.pressure.textContent = data.pressure.toFixed(3);
-    elements.temperature.textContent = data.temperature.toFixed(1);
-    elements.rpm.textContent = data.rpm.toLocaleString();
-    elements.power.textContent = data.power.toFixed(1);
+    elements.pressure.textContent = formatNumber(data.pressure, 3);
+    elements.temperature.textContent = formatNumber(data.temperature, 1);
+    elements.rpm.textContent = formatNumber(data.rpm, 0);
+    elements.power.textContent = formatNumber(data.power, 1);
     
     // Update calculated values
-    elements.liftDragRatio.textContent = calculateLiftDragRatio(data.lift, data.drag);
+    const liftDragRatio = calculateLiftDragRatio(data.lift, data.drag);
+    elements.liftDragRatio.textContent = liftDragRatio === '--' ? '--' : formatNumber(parseFloat(liftDragRatio), 2);
     
     // Update timestamp
     elements.timestamp.textContent = formatTimestamp(data.timestamp);
