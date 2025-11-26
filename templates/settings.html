@@ -637,21 +637,19 @@
                     if (data.status === 'success') {
                         const updateNotification = showNotification(
                             'Update In Progress', 
-                            'Installing updates and restarting service... Page will refresh automatically in 45 seconds.<div class="progress-log" id="progressLog"></div>',
+                            '<div id="countdownText">Installing updates and restarting service... Page will refresh automatically in 45 seconds.</div><div class="progress-log" id="progressLog"></div>',
                             'warning',
                             true // Show spinner
                         );
                         console.log('Update initiated:', data.message);
                         
-                        // Countdown timer
+                        // Countdown timer - only update the countdown text, not the whole message
                         let countdown = 45;
                         const countdownInterval = setInterval(() => {
                             countdown--;
-                            const messageEl = updateNotification.querySelector('.notification-message');
-                            if (messageEl) {
-                                const logDiv = messageEl.querySelector('#progressLog');
-                                const logHTML = logDiv ? logDiv.outerHTML : '';
-                                messageEl.innerHTML = `Installing updates and restarting service... Page will refresh in ${countdown} seconds.${logHTML}`;
+                            const countdownText = document.getElementById('countdownText');
+                            if (countdownText) {
+                                countdownText.textContent = `Installing updates and restarting service... Page will refresh in ${countdown} seconds.`;
                             }
                             if (countdown <= 0) {
                                 clearInterval(countdownInterval);

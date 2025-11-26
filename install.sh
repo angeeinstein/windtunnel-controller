@@ -558,14 +558,14 @@ if [[ "$1" == "auto-update" ]] || [[ "$1" == "--auto-update" ]]; then
     create_service
     
     print_success "Update completed successfully!"
-    print_info "Restarting service..."
+    print_info "Starting service..."
     
-    # Exit script cleanly, then restart service immediately in background
-    # This allows the script to return exit code 0 before the service restarts
+    # Exit script cleanly, then start service in background
+    # Use 'start' instead of 'restart' since create_service stops it
     echo "=== AUTO-UPDATE MODE FINISHED ==="
     
-    # Schedule immediate restart in background
-    nohup bash -c 'sleep 1 && systemctl restart windtunnel.service' >/dev/null 2>&1 &
+    # Schedule service start in background after script exits
+    nohup bash -c 'sleep 1 && systemctl start windtunnel.service' >/dev/null 2>&1 &
     
     exit 0
 fi
