@@ -210,8 +210,11 @@ def trigger_update():
                 # Wait for process to complete
                 process.wait()
                 
+                # Exit code -15 (SIGTERM) is expected when service restarts itself
                 if process.returncode == 0:
                     socketio.emit('update_progress', {'step': '✓ Update completed successfully', 'type': 'success'})
+                elif process.returncode == -15:
+                    socketio.emit('update_progress', {'step': '✓ Update completed - Service restarting...', 'type': 'success'})
                 else:
                     socketio.emit('update_progress', {'step': f'⚠ Update exited with code {process.returncode}', 'type': 'warning'})
                     
