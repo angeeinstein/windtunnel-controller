@@ -84,20 +84,24 @@ def trigger_update():
             if not os.path.exists(script_path):
                 return jsonify({'status': 'error', 'message': 'install.sh not found'}), 404
         
-        # Run update in background
+        # Run update in background (no sudo needed - already running as root via systemd)
         # This will update the repo, reinstall dependencies, and restart the service
-        subprocess.Popen(
-            ['sudo', 'bash', script_path],
+        process = subprocess.Popen(
+            ['bash', script_path],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             start_new_session=True,
             text=True
-        ).communicate(input='1\n', timeout=1)  # Send "1" for update option
+        )
         
-        return jsonify({'status': 'success', 'message': 'Update started. The service will restart automatically.'})
-    except subprocess.TimeoutExpired:
-        # This is expected - the process continues in background
+        # Send "1" for update option in non-blocking way
+        try:
+            process.stdin.write('1\n')
+            process.stdin.flush()
+        except:
+            pass  # Process may have already started, that's fine
+        
         return jsonify({'status': 'success', 'message': 'Update started. The service will restart automatically.'})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
