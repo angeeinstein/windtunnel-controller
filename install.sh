@@ -8,6 +8,9 @@
 
 set -e  # Exit on error
 
+# Set proper PATH for systemd compatibility
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
 # Configuration
 REPO_URL="https://github.com/angeeinstein/windtunnel-controller.git"
 INSTALL_DIR="$HOME/windtunnel-controller"
