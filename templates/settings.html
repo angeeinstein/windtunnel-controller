@@ -529,13 +529,17 @@
                 <h3 style="margin: 0 0 15px 0; color: var(--primary-color);">Confirm Action</h3>
                 <p style="margin: 0 0 25px 0; color: var(--text-secondary); line-height: 1.6;">${message.replace(/\n/g, '<br>')}</p>
                 <div style="display: flex; gap: 15px; justify-content: flex-end;">
-                    <button onclick="this.getRootNode().host.remove()" style="padding: 12px 30px; background: var(--border-color); color: var(--text-primary); border: none; border-radius: 8px; cursor: pointer; font-size: 1rem; font-weight: 600;">Cancel</button>
+                    <button id="cancelBtn" style="padding: 12px 30px; background: var(--border-color); color: var(--text-primary); border: none; border-radius: 8px; cursor: pointer; font-size: 1rem; font-weight: 600;">Cancel</button>
                     <button id="confirmBtn" style="padding: 12px 30px; background: var(--secondary-color); color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 1rem; font-weight: 600;">Confirm</button>
                 </div>
             `;
             
             overlay.appendChild(dialog);
             document.body.appendChild(overlay);
+            
+            dialog.querySelector('#cancelBtn').onclick = () => {
+                overlay.remove();
+            };
             
             dialog.querySelector('#confirmBtn').onclick = () => {
                 overlay.remove();
@@ -618,7 +622,7 @@
                     if (data.status === 'success') {
                         const updateNotification = showNotification(
                             'Update In Progress', 
-                            'Installing updates and restarting service... Page will refresh automatically in 35 seconds.<div class="progress-log" id="progressLog"></div>',
+                            'Installing updates and restarting service... Page will refresh automatically in 45 seconds.<div class="progress-log" id="progressLog"></div>',
                             'warning',
                             true // Show spinner
                         );
@@ -663,18 +667,6 @@
             });
         }
 
-        // Listen for update progress via WebSocket
-        socket.on('update_progress', (data) => {
-            const progressLog = document.getElementById('progressLog');
-            if (progressLog) {
-                const logLine = document.createElement('div');
-                logLine.className = `progress-log-line ${data.type || ''}`;
-                logLine.textContent = data.step;
-                progressLog.appendChild(logLine);
-                progressLog.scrollTop = progressLog.scrollHeight;
-            }
-        });
-
         // Load saved settings on page load
         window.addEventListener('DOMContentLoaded', function() {
             const savedSettings = localStorage.getItem('windtunnelSettings');
@@ -691,6 +683,33 @@
                 if (settings.darkMode) document.getElementById('darkMode').classList.add('active');
                 if (settings.autoCalculate !== false) document.getElementById('autoCalculate').classList.add('active');
                 if (settings.dataLogging) document.getElementById('dataLogging').classList.add('active');
+            }
+        });
+    </script>
+    
+    <!-- Socket.IO for real-time updates -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script>
+        // Initialize Socket.IO connection
+        const socket = io();
+        
+        socket.on('connect', () => {
+            console.log('WebSocket connected to server');
+        });
+        
+        socket.on('disconnect', () => {
+            console.log('WebSocket disconnected from server');
+        });
+        
+        // Listen for update progress via WebSocket
+        socket.on('update_progress', (data) => {
+            const progressLog = document.getElementById('progressLog');
+            if (progressLog) {
+                const logLine = document.createElement('div');
+                logLine.className = `progress-log-line ${data.type || ''}`;
+                logLine.textContent = data.step;
+                progressLog.appendChild(logLine);
+                progressLog.scrollTop = progressLog.scrollHeight;
             }
         });
     </script>
