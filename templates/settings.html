@@ -202,6 +202,10 @@
             border-left-color: #f39c12;
         }
 
+        .notification.info {
+            border-left-color: var(--secondary-color);
+        }
+
         .notification-header {
             display: flex;
             justify-content: space-between;
@@ -524,7 +528,7 @@
         // Update system
         function updateSystem() {
             confirmAction('This will update the Wind Tunnel Controller to the latest version from GitHub.\n\nThe system will restart automatically. Continue?', () => {
-                showNotification('Update Starting', 'Checking for updates and downloading latest version...', 'warning');
+                showNotification('Checking for Updates', 'Fetching latest version information...', 'warning');
                 
                 fetch('/api/update', {
                     method: 'POST',
@@ -537,10 +541,17 @@
                     if (data.status === 'success') {
                         showNotification(
                             'Update In Progress', 
-                            'The system is updating and will restart in a few moments. Please wait about 30 seconds and refresh the page.',
+                            'The system is updating and will restart in a few moments. The page will refresh automatically.',
                             'success'
                         );
                         console.log('Update initiated:', data.message);
+                        
+                        // Auto-refresh after 35 seconds to show the updated version
+                        setTimeout(() => {
+                            location.reload();
+                        }, 35000);
+                    } else if (data.status === 'info') {
+                        showNotification('Already Up to Date', data.message, 'success');
                     } else {
                         showNotification('Update Failed', data.message, 'error');
                     }

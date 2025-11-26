@@ -85,6 +85,35 @@ def trigger_update():
             if not os.path.exists(script_path):
                 return jsonify({'status': 'error', 'message': 'install.sh not found'}), 404
         
+        # Check if updates are available
+        try:
+            # Fetch latest from remote
+            subprocess.run(['git', 'fetch', 'origin', 'main'], 
+                         cwd=os.path.dirname(script_path), 
+                         capture_output=True, 
+                         text=True,
+                         timeout=10)
+            
+            # Check if local is behind remote
+            result = subprocess.run(
+                ['git', 'rev-list', '--count', 'HEAD..origin/main'],
+                cwd=os.path.dirname(script_path),
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            commits_behind = int(result.stdout.strip())
+            
+            if commits_behind == 0:
+                return jsonify({
+                    'status': 'info', 
+                    'message': 'Already up to date! No updates available.'
+                })
+        except Exception as e:
+            # If git check fails, continue anyway (might be connectivity issue)
+            pass
+        
         # Find bash executable
         bash_path = shutil.which('bash')
         if not bash_path:
@@ -119,6 +148,42 @@ def trigger_update():
         return jsonify({'status': 'success', 'message': 'Update started. The service will restart automatically.'})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/version')
+def get_version():
+    """Get current version info from git."""
+    import subprocess
+    import os
+    
+    try:
+        project_root = os.path.dirname(os.path.abspath(__file__))
+        
+        # Get current commit hash
+        result = subprocess.run(
+            ['git', 'rev-parse', '--short', 'HEAD'],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        commit_hash = result.stdout.strip()
+        
+        # Get commit date
+        result = subprocess.run(
+            ['git', 'log', '-1', '--format=%cd', '--date=short'],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        commit_date = result.stdout.strip()
+        
+        return jsonify({
+            'commit': commit_hash,
+            'date': commit_date
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/data')
 def get_data():
