@@ -282,6 +282,40 @@ EOF
     print_success "Systemd service configured"
 }
 
+# Update service file without stopping (for auto-update)
+update_service_file() {
+    print_step "Updating systemd service file..."
+    
+    # Create/update service file
+    cat > "$SERVICE_FILE" <<EOF
+[Unit]
+Description=Wind Tunnel Controller Web Interface
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=$INSTALL_DIR
+Environment="PATH=$VENV_DIR/bin"
+ExecStart=$VENV_DIR/bin/gunicorn --worker-class gthread --workers 1 --threads 4 --bind 0.0.0.0:80 app:app
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    print_success "Service file updated"
+    
+    # Reload systemd
+    print_info "Reloading systemd daemon..."
+    systemctl daemon-reload
+    
+    print_success "Systemd configuration reloaded"
+}
+
 # Enable and start service
 enable_service() {
     print_step "Enabling and starting service..."
@@ -555,17 +589,16 @@ if [[ "$1" == "auto-update" ]] || [[ "$1" == "--auto-update" ]]; then
     install_python_packages
     
     echo "Step 4: Updating service configuration..."
-    create_service
+    update_service_file
     
     print_success "Update completed successfully!"
-    print_info "Starting service..."
+    print_info "Restarting service..."
     
-    # Exit script cleanly, then start service in background
-    # Use 'start' instead of 'restart' since create_service stops it
+    # Exit script cleanly, then restart service
     echo "=== AUTO-UPDATE MODE FINISHED ==="
     
-    # Schedule service start in background after script exits
-    nohup bash -c 'sleep 1 && systemctl start windtunnel.service' >/dev/null 2>&1 &
+    # Restart the service using systemctl restart (which works even if service is running)
+    nohup bash -c 'sleep 2 && systemctl restart windtunnel.service' >/dev/null 2>&1 &
     
     exit 0
 fi
