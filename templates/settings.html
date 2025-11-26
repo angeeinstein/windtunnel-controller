@@ -637,32 +637,58 @@
                     if (data.status === 'success') {
                         const updateNotification = showNotification(
                             'Update In Progress', 
-                            '<div id="countdownText">Installing updates and restarting service... Page will refresh automatically in 45 seconds.</div><div class="progress-log" id="progressLog"></div>',
+                            '<div id="countdownText">Installing updates and restarting service... Checking server status...</div><div class="progress-log" id="progressLog"></div>',
                             'warning',
                             true // Show spinner
                         );
                         console.log('Update initiated:', data.message);
                         
-                        // Countdown timer - only update the countdown text, not the whole message
-                        let countdown = 45;
-                        const countdownInterval = setInterval(() => {
-                            countdown--;
+                        // Start polling for server availability after 5 seconds
+                        let pollAttempts = 0;
+                        const maxPollTime = 40; // Maximum 40 seconds of polling
+                        
+                        setTimeout(() => {
                             const countdownText = document.getElementById('countdownText');
                             if (countdownText) {
-                                countdownText.textContent = `Installing updates and restarting service... Page will refresh in ${countdown} seconds.`;
+                                countdownText.textContent = 'Waiting for server to restart...';
                             }
-                            if (countdown <= 0) {
-                                clearInterval(countdownInterval);
-                            }
-                        }, 1000);
-                        
-                        // Auto-refresh after 45 seconds
-                        setTimeout(() => {
-                            clearInterval(countdownInterval);
-                            updateInProgress = false;
-                            // Force hard reload to bypass cache
-                            location.reload(true);
-                        }, 45000);
+                            
+                            // Poll server every second
+                            const pollInterval = setInterval(() => {
+                                pollAttempts++;
+                                
+                                // Try to fetch from server
+                                fetch('/api/version', { method: 'GET', cache: 'no-cache' })
+                                    .then(response => {
+                                        if (response.ok) {
+                                            // Server is back!
+                                            clearInterval(pollInterval);
+                                            const countdownText = document.getElementById('countdownText');
+                                            if (countdownText) {
+                                                countdownText.textContent = 'Server restarted successfully! Reloading page...';
+                                            }
+                                            setTimeout(() => {
+                                                updateInProgress = false;
+                                                location.reload(true);
+                                            }, 1000);
+                                        }
+                                    })
+                                    .catch(() => {
+                                        // Server not ready yet, keep polling
+                                        const countdownText = document.getElementById('countdownText');
+                                        if (countdownText) {
+                                            countdownText.textContent = `Waiting for server to restart... (${pollAttempts}s)`;
+                                        }
+                                    });
+                                
+                                // Stop polling after max time
+                                if (pollAttempts >= maxPollTime) {
+                                    clearInterval(pollInterval);
+                                    updateInProgress = false;
+                                    location.reload(true);
+                                }
+                            }, 1000);
+                        }, 5000); // Wait 5 seconds before starting to poll
                     } else if (data.status === 'info') {
                         updateInProgress = false;
                         showNotification('Already Up to Date', data.message, 'success');
