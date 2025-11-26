@@ -240,6 +240,33 @@
             font-size: 1rem;
             line-height: 1.5;
         }
+
+        /* Spinner animation */
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(0, 0, 0, 0.1);
+            border-radius: 50%;
+            border-top-color: var(--secondary-color);
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .notification-content {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+
+        .notification-text {
+            flex: 1;
+        }
     </style>
 </head>
 <body>
@@ -409,17 +436,25 @@
 
     <script>
         // Notification system
-        function showNotification(title, message, type = 'success') {
+        function showNotification(title, message, type = 'success', showSpinner = false) {
             const container = document.getElementById('notificationContainer');
             
             const notification = document.createElement('div');
             notification.className = `notification ${type}`;
+            
+            const spinnerHTML = showSpinner ? '<div class="spinner"></div>' : '';
+            
             notification.innerHTML = `
                 <div class="notification-header">
                     <div class="notification-title">${title}</div>
                     <button class="notification-close" onclick="this.parentElement.parentElement.remove()">×</button>
                 </div>
-                <div class="notification-message">${message}</div>
+                <div class="notification-content">
+                    ${spinnerHTML}
+                    <div class="notification-text">
+                        <div class="notification-message">${message}</div>
+                    </div>
+                </div>
             `;
             
             container.appendChild(notification);
@@ -427,11 +462,15 @@
             // Trigger animation
             setTimeout(() => notification.classList.add('show'), 10);
             
-            // Auto-remove after 5 seconds
-            setTimeout(() => {
-                notification.classList.remove('show');
-                setTimeout(() => notification.remove(), 300);
-            }, 5000);
+            // Auto-remove after 5 seconds (unless it has a spinner - those are manual)
+            if (!showSpinner) {
+                setTimeout(() => {
+                    notification.classList.remove('show');
+                    setTimeout(() => notification.remove(), 300);
+                }, 5000);
+            }
+            
+            return notification; // Return reference so we can remove it later
         }
 
         function confirmAction(message, onConfirm) {
@@ -528,7 +567,7 @@
         // Update system
         function updateSystem() {
             confirmAction('This will update the Wind Tunnel Controller to the latest version from GitHub.\n\nThe system will restart automatically. Continue?', () => {
-                showNotification('Checking for Updates', 'Fetching latest version information...', 'warning');
+                const checkingNotification = showNotification('Checking for Updates', 'Fetching latest version information...', 'warning', true);
                 
                 fetch('/api/update', {
                     method: 'POST',
@@ -538,16 +577,34 @@
                 })
                 .then(response => response.json())
                 .then(data => {
+                    // Remove checking notification
+                    checkingNotification.remove();
+                    
                     if (data.status === 'success') {
-                        showNotification(
+                        const updateNotification = showNotification(
                             'Update In Progress', 
-                            'The system is updating and will restart in a few moments. The page will refresh automatically.',
-                            'success'
+                            'Installing updates and restarting service... Page will refresh automatically in 35 seconds.',
+                            'warning',
+                            true // Show spinner
                         );
                         console.log('Update initiated:', data.message);
                         
-                        // Auto-refresh after 35 seconds to show the updated version
+                        // Countdown timer
+                        let countdown = 35;
+                        const countdownInterval = setInterval(() => {
+                            countdown--;
+                            const messageEl = updateNotification.querySelector('.notification-message');
+                            if (messageEl) {
+                                messageEl.textContent = `Installing updates and restarting service... Page will refresh in ${countdown} seconds.`;
+                            }
+                            if (countdown <= 0) {
+                                clearInterval(countdownInterval);
+                            }
+                        }, 1000);
+                        
+                        // Auto-refresh after 35 seconds
                         setTimeout(() => {
+                            clearInterval(countdownInterval);
                             location.reload();
                         }, 35000);
                     } else if (data.status === 'info') {
@@ -557,6 +614,8 @@
                     }
                 })
                 .catch(error => {
+                    // Remove checking notification
+                    checkingNotification.remove();
                     showNotification('Update Error', 'Failed to initiate update: ' + error, 'error');
                     console.error('Update error:', error);
                 });
