@@ -156,8 +156,9 @@ def trigger_update():
                 env = os.environ.copy()
                 env['PYTHONUNBUFFERED'] = '1'  # Disable Python output buffering
                 
+                # Use sh instead of bash for better compatibility
                 process = subprocess.Popen(
-                    ['bash', script_path, 'auto-update'],
+                    ['sh', script_path, 'auto-update'],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
