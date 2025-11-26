@@ -724,7 +724,12 @@
                 logLine.className = `progress-log-line ${data.type || ''}`;
                 logLine.textContent = data.step;
                 progressLog.appendChild(logLine);
-                progressLog.scrollTop = progressLog.scrollHeight;
+                
+                // Only auto-scroll if user is already at the bottom (within 50px)
+                const isScrolledToBottom = progressLog.scrollHeight - progressLog.clientHeight <= progressLog.scrollTop + 50;
+                if (isScrolledToBottom) {
+                    progressLog.scrollTop = progressLog.scrollHeight;
+                }
             }
         });
     </script>

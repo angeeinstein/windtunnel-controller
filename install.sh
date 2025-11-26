@@ -558,8 +558,10 @@ if [[ "$1" == "auto-update" ]] || [[ "$1" == "--auto-update" ]]; then
     create_service
     
     print_success "Update completed successfully!"
-    print_info "Restarting service..."
-    systemctl restart "$SERVICE_NAME" 2>/dev/null || true
+    print_info "Service will restart in 3 seconds..."
+    
+    # Restart service in background after a delay (so this script can exit first)
+    (sleep 3 && systemctl restart "$SERVICE_NAME") &
     
     echo "=== AUTO-UPDATE MODE FINISHED ==="
     exit 0
