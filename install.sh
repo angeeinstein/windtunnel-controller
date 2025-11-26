@@ -524,6 +524,32 @@ if [[ "$1" == "uninstall" ]] || [[ "$1" == "--uninstall" ]] || [[ "$1" == "-u" ]
     exit 0
 fi
 
+# Check for auto-update flag (non-interactive)
+if [[ "$1" == "auto-update" ]] || [[ "$1" == "--auto-update" ]]; then
+    print_header
+    print_info "Running automatic update (non-interactive mode)..."
+    
+    # Skip sudo check - assume already running with proper privileges
+    
+    # Check if installation exists
+    if [[ ! -d "$INSTALL_DIR" ]]; then
+        print_error "Installation directory not found: $INSTALL_DIR"
+        exit 1
+    fi
+    
+    # Perform update steps
+    update_repository
+    setup_venv
+    install_python_packages
+    create_service
+    
+    print_success "Update completed successfully!"
+    print_info "Restarting service..."
+    systemctl restart "$SERVICE_NAME" 2>/dev/null || true
+    
+    exit 0
+fi
+
 # Trap errors
 trap 'print_error "An error occurred. Installation failed."; exit 1' ERR
 

@@ -147,13 +147,12 @@ def trigger_update():
         def run_update():
             global update_in_progress
             try:
-                socketio.emit('update_progress', {'step': 'Running install script...', 'type': 'info'})
+                socketio.emit('update_progress', {'step': 'Running install script in auto-update mode...', 'type': 'info'})
                 
-                # Run install.sh with update option
+                # Run install.sh with auto-update flag (non-interactive)
                 # Use Popen to capture output in real-time
                 process = subprocess.Popen(
-                    ['bash', script_path],
-                    stdin=subprocess.PIPE,
+                    ['bash', script_path, 'auto-update'],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
@@ -161,11 +160,6 @@ def trigger_update():
                     universal_newlines=True,
                     cwd=os.path.dirname(script_path)
                 )
-                
-                # Send "1" for update option
-                process.stdin.write('1\n')
-                process.stdin.flush()
-                process.stdin.close()
                 
                 # Read output line by line in real-time
                 for line in iter(process.stdout.readline, ''):
