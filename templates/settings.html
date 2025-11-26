@@ -662,7 +662,8 @@
                         setTimeout(() => {
                             clearInterval(countdownInterval);
                             updateInProgress = false;
-                            location.reload();
+                            // Force hard reload to bypass cache
+                            location.reload(true);
                         }, 45000);
                     } else if (data.status === 'info') {
                         updateInProgress = false;
