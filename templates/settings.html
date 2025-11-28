@@ -617,8 +617,28 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data.status === 'success') {
-                        showNotification('Settings Reset', data.message + ' Reloading...', 'success');
-                        setTimeout(() => location.reload(), 1500);
+                        showNotification('Settings Reset', data.message, 'success');
+                        
+                        // Update UI immediately with reset settings
+                        const settings = data.settings;
+                        
+                        // Clear all toggles first
+                        document.getElementById('darkMode').classList.remove('active');
+                        document.getElementById('autoCalculate').classList.remove('active');
+                        document.getElementById('dataLogging').classList.remove('active');
+                        
+                        // Update form values with reset settings
+                        document.getElementById('updateInterval').value = settings.updateInterval;
+                        document.getElementById('decimalPlaces').value = settings.decimalPlaces;
+                        document.getElementById('velocityUnit').value = settings.velocityUnit;
+                        document.getElementById('temperatureUnit').value = settings.temperatureUnit;
+                        document.getElementById('highVelocity').value = settings.highVelocity;
+                        document.getElementById('systemName').value = settings.systemName;
+                        
+                        // Set toggles based on reset settings
+                        if (settings.darkMode) document.getElementById('darkMode').classList.add('active');
+                        if (settings.autoCalculate) document.getElementById('autoCalculate').classList.add('active');
+                        if (settings.dataLogging) document.getElementById('dataLogging').classList.add('active');
                     } else {
                         showNotification('Error', data.message, 'error');
                     }

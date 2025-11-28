@@ -147,6 +147,21 @@ function updateDisplay(data) {
     // Update timestamp
     elements.timestamp.textContent = formatTimestamp(data.timestamp);
     
+    // Add data points to graphs (use converted values for display)
+    addGraphDataPoint('velocity', velocity);
+    addGraphDataPoint('lift', data.lift);
+    addGraphDataPoint('drag', data.drag);
+    addGraphDataPoint('pressure', data.pressure);
+    addGraphDataPoint('temperature', temperature);
+    addGraphDataPoint('rpm', data.rpm);
+    addGraphDataPoint('power', data.power);
+    if (liftDragRatio !== '--') {
+        addGraphDataPoint('liftDragRatio', parseFloat(liftDragRatio));
+    }
+    
+    // Update sparklines
+    updateAllSparklines();
+    
     // Add brief highlight animation to updated values
     Object.values(elements).forEach(el => {
         if (el && el.classList) {
@@ -209,3 +224,231 @@ document.getElementById('resetBtn').addEventListener('click', () => {
 
 // Initial connection message
 console.log('Wind Tunnel Control System initialized');
+
+// Graph data storage (keep last 50 data points for sparklines)
+const graphData = {
+    velocity: [],
+    lift: [],
+    drag: [],
+    pressure: [],
+    temperature: [],
+    rpm: [],
+    power: [],
+    liftDragRatio: []
+};
+
+const MAX_GRAPH_POINTS = 50;
+
+// Add data point to graph
+function addGraphDataPoint(key, value) {
+    if (!graphData[key]) {
+        graphData[key] = [];
+    }
+    graphData[key].push(value);
+    if (graphData[key].length > MAX_GRAPH_POINTS) {
+        graphData[key].shift();
+    }
+}
+
+// Draw sparkline
+function drawSparkline(canvasId, data, color = '#3498db') {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || !data || data.length === 0) return;
+    
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width = canvas.offsetWidth * 2; // High DPI
+    const height = canvas.height = canvas.offsetHeight * 2;
+    ctx.scale(2, 2);
+    
+    const displayWidth = width / 2;
+    const displayHeight = height / 2;
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, displayWidth, displayHeight);
+    
+    // Find min and max for scaling
+    const min = Math.min(...data);
+    const max = Math.max(...data);
+    const range = max - min || 1; // Avoid division by zero
+    
+    // Draw line
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    
+    ctx.beginPath();
+    data.forEach((value, index) => {
+        const x = (index / (data.length - 1 || 1)) * displayWidth;
+        const y = displayHeight - ((value - min) / range) * (displayHeight - 10) - 5;
+        
+        if (index === 0) {
+            ctx.moveTo(x, y);
+        } else {
+            ctx.lineTo(x, y);
+        }
+    });
+    ctx.stroke();
+    
+    // Draw fill gradient
+    ctx.lineTo(displayWidth, displayHeight);
+    ctx.lineTo(0, displayHeight);
+    ctx.closePath();
+    
+    const gradient = ctx.createLinearGradient(0, 0, 0, displayHeight);
+    gradient.addColorStop(0, color + '40');
+    gradient.addColorStop(1, color + '00');
+    ctx.fillStyle = gradient;
+    ctx.fill();
+}
+
+// Draw all sparklines
+function updateAllSparklines() {
+    drawSparkline('sparkline-velocity', graphData.velocity, '#e74c3c');
+    drawSparkline('sparkline-lift', graphData.lift, '#e74c3c');
+    drawSparkline('sparkline-drag', graphData.drag, '#e74c3c');
+    drawSparkline('sparkline-pressure', graphData.pressure, '#3498db');
+    drawSparkline('sparkline-temperature', graphData.temperature, '#3498db');
+    drawSparkline('sparkline-rpm', graphData.rpm, '#3498db');
+    drawSparkline('sparkline-power', graphData.power, '#3498db');
+    drawSparkline('sparkline-liftDragRatio', graphData.liftDragRatio, '#27ae60');
+}
+
+// Fullscreen graph variables
+let currentGraphKey = null;
+let fullscreenAnimationFrame = null;
+
+// Open fullscreen graph
+function openFullscreenGraph(key, title) {
+    currentGraphKey = key;
+    document.getElementById('graphModalTitle').textContent = title;
+    document.getElementById('graphModal').style.display = 'flex';
+    
+    // Start animation loop for fullscreen graph
+    const drawFullscreenGraph = () => {
+        const canvas = document.getElementById('fullscreenGraph');
+        const data = graphData[key];
+        
+        if (!data || data.length === 0) {
+            fullscreenAnimationFrame = requestAnimationFrame(drawFullscreenGraph);
+            return;
+        }
+        
+        const ctx = canvas.getContext('2d');
+        const container = canvas.parentElement;
+        canvas.width = container.offsetWidth;
+        canvas.height = container.offsetHeight;
+        
+        const width = canvas.width;
+        const height = canvas.height;
+        const padding = 60;
+        const graphWidth = width - 2 * padding;
+        const graphHeight = height - 2 * padding;
+        
+        // Clear canvas
+        ctx.fillStyle = '#f8f9fa';
+        ctx.fillRect(0, 0, width, height);
+        
+        // Find min and max
+        const min = Math.min(...data);
+        const max = Math.max(...data);
+        const range = max - min || 1;
+        
+        // Draw grid lines
+        ctx.strokeStyle = '#dfe6e9';
+        ctx.lineWidth = 1;
+        
+        // Horizontal grid lines
+        for (let i = 0; i <= 5; i++) {
+            const y = padding + (i / 5) * graphHeight;
+            ctx.beginPath();
+            ctx.moveTo(padding, y);
+            ctx.lineTo(width - padding, y);
+            ctx.stroke();
+            
+            // Y-axis labels
+            const value = max - (i / 5) * range;
+            ctx.fillStyle = '#2c3e50';
+            ctx.font = '14px Segoe UI';
+            ctx.textAlign = 'right';
+            ctx.fillText(formatNumber(value, 2), padding - 10, y + 5);
+        }
+        
+        // Vertical grid lines
+        const timeStep = Math.ceil(data.length / 10);
+        for (let i = 0; i <= 10; i++) {
+            const x = padding + (i / 10) * graphWidth;
+            ctx.beginPath();
+            ctx.moveTo(x, padding);
+            ctx.lineTo(x, height - padding);
+            ctx.stroke();
+        }
+        
+        // Draw data line
+        ctx.strokeStyle = '#3498db';
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        
+        ctx.beginPath();
+        data.forEach((value, index) => {
+            const x = padding + (index / (data.length - 1 || 1)) * graphWidth;
+            const y = height - padding - ((value - min) / range) * graphHeight;
+            
+            if (index === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
+        });
+        ctx.stroke();
+        
+        // Draw fill
+        ctx.lineTo(padding + graphWidth, height - padding);
+        ctx.lineTo(padding, height - padding);
+        ctx.closePath();
+        
+        const gradient = ctx.createLinearGradient(0, padding, 0, height - padding);
+        gradient.addColorStop(0, '#3498db60');
+        gradient.addColorStop(1, '#3498db00');
+        ctx.fillStyle = gradient;
+        ctx.fill();
+        
+        // Draw current value marker
+        if (data.length > 0) {
+            const lastValue = data[data.length - 1];
+            const x = padding + graphWidth;
+            const y = height - padding - ((lastValue - min) / range) * graphHeight;
+            
+            ctx.fillStyle = '#e74c3c';
+            ctx.beginPath();
+            ctx.arc(x, y, 6, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Value label
+            ctx.fillStyle = '#2c3e50';
+            ctx.font = 'bold 18px Segoe UI';
+            ctx.textAlign = 'left';
+            ctx.fillText(formatNumber(lastValue, 2), x + 15, y + 6);
+        }
+        
+        fullscreenAnimationFrame = requestAnimationFrame(drawFullscreenGraph);
+    };
+    
+    drawFullscreenGraph();
+}
+
+// Close fullscreen graph
+function closeFullscreenGraph() {
+    document.getElementById('graphModal').style.display = 'none';
+    if (fullscreenAnimationFrame) {
+        cancelAnimationFrame(fullscreenAnimationFrame);
+        fullscreenAnimationFrame = null;
+    }
+    currentGraphKey = null;
+}
+
+// Make functions globally accessible
+window.openFullscreenGraph = openFullscreenGraph;
+window.closeFullscreenGraph = closeFullscreenGraph;
+
