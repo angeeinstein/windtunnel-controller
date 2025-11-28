@@ -14,6 +14,7 @@ fetch('/api/settings')
     .then(settings => {
         currentSettings = settings;
         console.log('Settings loaded:', settings);
+        updateUnitLabels(); // Update unit labels on load
     })
     .catch(error => console.error('Failed to load settings:', error));
 

@@ -815,6 +815,14 @@
             fetch('/api/settings')
                 .then(response => response.json())
                 .then(settings => {
+                    console.log('Loading settings:', settings);
+                    
+                    // Clear all toggles first
+                    document.getElementById('darkMode').classList.remove('active');
+                    document.getElementById('autoCalculate').classList.remove('active');
+                    document.getElementById('dataLogging').classList.remove('active');
+                    
+                    // Set form values
                     document.getElementById('updateInterval').value = settings.updateInterval || 500;
                     document.getElementById('decimalPlaces').value = settings.decimalPlaces || 2;
                     document.getElementById('velocityUnit').value = settings.velocityUnit || 'ms';
@@ -822,8 +830,9 @@
                     document.getElementById('highVelocity').value = settings.highVelocity || 50;
                     document.getElementById('systemName').value = settings.systemName || 'Wind Tunnel Alpha';
                     
+                    // Set toggles based on settings
                     if (settings.darkMode) document.getElementById('darkMode').classList.add('active');
-                    if (settings.autoCalculate !== false) document.getElementById('autoCalculate').classList.add('active');
+                    if (settings.autoCalculate) document.getElementById('autoCalculate').classList.add('active');
                     if (settings.dataLogging) document.getElementById('dataLogging').classList.add('active');
                 })
                 .catch(error => {
