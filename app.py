@@ -2,11 +2,52 @@ from flask import Flask, render_template, jsonify, Response
 from flask_socketio import SocketIO, emit
 import random
 import time
+import json
+import os
 from threading import Lock
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key-here'
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0  # Disable caching in development
+
+# Settings file path
+SETTINGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'settings.json')
+
+# Default settings
+DEFAULT_SETTINGS = {
+    'updateInterval': 500,
+    'darkMode': False,
+    'decimalPlaces': 2,
+    'velocityUnit': 'ms',
+    'temperatureUnit': 'c',
+    'autoCalculate': True,
+    'dataLogging': False,
+    'highVelocity': 50,
+    'systemName': 'Wind Tunnel Alpha'
+}
+
+# Load settings from file
+def load_settings():
+    try:
+        if os.path.exists(SETTINGS_FILE):
+            with open(SETTINGS_FILE, 'r') as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"Error loading settings: {e}")
+    return DEFAULT_SETTINGS.copy()
+
+# Save settings to file
+def save_settings_to_file(settings):
+    try:
+        with open(SETTINGS_FILE, 'w') as f:
+            json.dump(settings, f, indent=2)
+        return True
+    except Exception as e:
+        print(f"Error saving settings: {e}")
+        return False
+
+# Global settings
+current_settings = load_settings()
 
 # Add cache control headers
 @app.after_request

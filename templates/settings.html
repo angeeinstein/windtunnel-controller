@@ -576,30 +576,56 @@
         // Save settings
         function saveSettings() {
             const settings = {
-                updateInterval: document.getElementById('updateInterval').value,
+                updateInterval: parseInt(document.getElementById('updateInterval').value),
                 darkMode: document.getElementById('darkMode').classList.contains('active'),
-                decimalPlaces: document.getElementById('decimalPlaces').value,
+                decimalPlaces: parseInt(document.getElementById('decimalPlaces').value),
                 velocityUnit: document.getElementById('velocityUnit').value,
                 temperatureUnit: document.getElementById('temperatureUnit').value,
                 autoCalculate: document.getElementById('autoCalculate').classList.contains('active'),
                 dataLogging: document.getElementById('dataLogging').classList.contains('active'),
-                highVelocity: document.getElementById('highVelocity').value,
+                highVelocity: parseFloat(document.getElementById('highVelocity').value),
                 systemName: document.getElementById('systemName').value
             };
 
-            // Store in localStorage for now (can be sent to server later)
-            localStorage.setItem('windtunnelSettings', JSON.stringify(settings));
-            
-            showNotification('Settings Saved', 'Your settings have been saved successfully!', 'success');
-            console.log('Saved settings:', settings);
+            // Send to server
+            fetch('/api/settings', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(settings)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    showNotification('Settings Saved', data.message, 'success');
+                } else {
+                    showNotification('Error', data.message, 'error');
+                }
+            })
+            .catch(error => {
+                showNotification('Error', 'Failed to save settings: ' + error, 'error');
+            });
         }
 
         // Reset settings
         function resetSettings() {
             confirmAction('Are you sure you want to reset all settings to defaults?', () => {
-                localStorage.removeItem('windtunnelSettings');
-                showNotification('Settings Reset', 'All settings have been reset to defaults. Reloading...', 'success');
-                setTimeout(() => location.reload(), 1500);
+                fetch('/api/settings/reset', {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        showNotification('Settings Reset', data.message + ' Reloading...', 'success');
+                        setTimeout(() => location.reload(), 1500);
+                    } else {
+                        showNotification('Error', data.message, 'error');
+                    }
+                })
+                .catch(error => {
+                    showNotification('Error', 'Failed to reset settings: ' + error, 'error');
+                });
             });
         }
 
@@ -720,21 +746,30 @@
 
         // Load saved settings on page load
         window.addEventListener('DOMContentLoaded', function() {
-            const savedSettings = localStorage.getItem('windtunnelSettings');
-            if (savedSettings) {
-                const settings = JSON.parse(savedSettings);
-                
-                document.getElementById('updateInterval').value = settings.updateInterval || 500;
-                document.getElementById('decimalPlaces').value = settings.decimalPlaces || 2;
-                document.getElementById('velocityUnit').value = settings.velocityUnit || 'ms';
-                document.getElementById('temperatureUnit').value = settings.temperatureUnit || 'c';
-                document.getElementById('highVelocity').value = settings.highVelocity || 50;
-                document.getElementById('systemName').value = settings.systemName || 'Wind Tunnel Alpha';
-                
-                if (settings.darkMode) document.getElementById('darkMode').classList.add('active');
-                if (settings.autoCalculate !== false) document.getElementById('autoCalculate').classList.add('active');
-                if (settings.dataLogging) document.getElementById('dataLogging').classList.add('active');
-            }
+            // Load settings from server
+            fetch('/api/settings')
+                .then(response => response.json())
+                .then(settings => {
+                    document.getElementById('updateInterval').value = settings.updateInterval || 500;
+                    document.getElementById('decimalPlaces').value = settings.decimalPlaces || 2;
+                    document.getElementById('velocityUnit').value = settings.velocityUnit || 'ms';
+                    document.getElementById('temperatureUnit').value = settings.temperatureUnit || 'c';
+                    document.getElementById('highVelocity').value = settings.highVelocity || 50;
+                    document.getElementById('systemName').value = settings.systemName || 'Wind Tunnel Alpha';
+                    
+                    if (settings.darkMode) document.getElementById('darkMode').classList.add('active');
+                    if (settings.autoCalculate !== false) document.getElementById('autoCalculate').classList.add('active');
+                    if (settings.dataLogging) document.getElementById('dataLogging').classList.add('active');
+                })
+                .catch(error => {
+                    console.error('Failed to load settings:', error);
+                });
+        });
+        
+        // Listen for settings updates from server (when changed on another device)
+        socket.on('settings_updated', (settings) => {
+            console.log('Settings updated from server:', settings);
+            // Optionally reload the page or update UI
         });
     </script>
     
@@ -767,6 +802,33 @@
                     progressLog.scrollTop = progressLog.scrollHeight;
                 }
             }
+        });
+        
+        // Listen for settings updates from server (when changed on another device)
+        socket.on('settings_updated', (settings) => {
+            console.log('Settings updated from server:', settings);
+        });
+        
+        // Load saved settings on page load
+        window.addEventListener('DOMContentLoaded', function() {
+            // Load settings from server
+            fetch('/api/settings')
+                .then(response => response.json())
+                .then(settings => {
+                    document.getElementById('updateInterval').value = settings.updateInterval || 500;
+                    document.getElementById('decimalPlaces').value = settings.decimalPlaces || 2;
+                    document.getElementById('velocityUnit').value = settings.velocityUnit || 'ms';
+                    document.getElementById('temperatureUnit').value = settings.temperatureUnit || 'c';
+                    document.getElementById('highVelocity').value = settings.highVelocity || 50;
+                    document.getElementById('systemName').value = settings.systemName || 'Wind Tunnel Alpha';
+                    
+                    if (settings.darkMode) document.getElementById('darkMode').classList.add('active');
+                    if (settings.autoCalculate !== false) document.getElementById('autoCalculate').classList.add('active');
+                    if (settings.dataLogging) document.getElementById('dataLogging').classList.add('active');
+                })
+                .catch(error => {
+                    console.error('Failed to load settings:', error);
+                });
         });
     </script>
 </body>
