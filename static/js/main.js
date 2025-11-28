@@ -1,6 +1,66 @@
 // WebSocket connection
 const socket = io();
 
+// Current settings (loaded from server)
+let currentSettings = {
+    velocityUnit: 'ms',
+    temperatureUnit: 'c',
+    decimalPlaces: 2
+};
+
+// Load settings from server
+fetch('/api/settings')
+    .then(response => response.json())
+    .then(settings => {
+        currentSettings = settings;
+        console.log('Settings loaded:', settings);
+    })
+    .catch(error => console.error('Failed to load settings:', error));
+
+// Listen for settings updates
+socket.on('settings_updated', (settings) => {
+    currentSettings = settings;
+    console.log('Settings updated:', settings);
+    updateUnitLabels();
+});
+
+// Update unit labels in UI
+function updateUnitLabels() {
+    const velocityUnitEl = document.getElementById('velocity-unit');
+    const tempUnitEl = document.getElementById('temperature-unit');
+    
+    if (velocityUnitEl) velocityUnitEl.textContent = getVelocityUnit();
+    if (tempUnitEl) tempUnitEl.textContent = getTemperatureUnit();
+}
+
+// Unit conversion functions
+function convertVelocity(ms) {
+    switch(currentSettings.velocityUnit) {
+        case 'kmh': return ms * 3.6;
+        case 'mph': return ms * 2.237;
+        case 'knots': return ms * 1.944;
+        default: return ms; // m/s
+    }
+}
+
+function convertTemperature(celsius) {
+    switch(currentSettings.temperatureUnit) {
+        case 'f': return celsius * 9/5 + 32;
+        case 'k': return celsius + 273.15;
+        default: return celsius; // °C
+    }
+}
+
+function getVelocityUnit() {
+    const units = { 'ms': 'm/s', 'kmh': 'km/h', 'mph': 'mph', 'knots': 'knots' };
+    return units[currentSettings.velocityUnit] || 'm/s';
+}
+
+function getTemperatureUnit() {
+    const units = { 'c': '°C', 'f': '°F', 'k': 'K' };
+    return units[currentSettings.temperatureUnit] || '°C';
+}
+
 // DOM elements
 const elements = {
     velocity: document.getElementById('velocity'),
@@ -28,7 +88,12 @@ function formatTimestamp(timestamp) {
 }
 
 // Format number with European formatting (comma for decimal, space for thousands)
-function formatNumber(number, decimals = 2) {
+function formatNumber(number, decimals) {
+    // Use settings decimal places if not specified
+    if (decimals === undefined) {
+        decimals = currentSettings.decimalPlaces || 2;
+    }
+    
     if (number === null || number === undefined || isNaN(number)) {
         return '--';
     }
@@ -59,20 +124,24 @@ function calculateLiftDragRatio(lift, drag) {
 
 // Update display with new data
 function updateDisplay(data) {
-    // Update primary measurements
-    elements.velocity.textContent = formatNumber(data.velocity, 2);
-    elements.lift.textContent = formatNumber(data.lift, 2);
-    elements.drag.textContent = formatNumber(data.drag, 2);
+    // Apply unit conversions
+    const velocity = convertVelocity(data.velocity);
+    const temperature = convertTemperature(data.temperature);
+    
+    // Update primary measurements with conversions
+    elements.velocity.textContent = formatNumber(velocity);
+    elements.lift.textContent = formatNumber(data.lift);
+    elements.drag.textContent = formatNumber(data.drag);
     
     // Update secondary measurements
-    elements.pressure.textContent = formatNumber(data.pressure, 3);
-    elements.temperature.textContent = formatNumber(data.temperature, 1);
+    elements.pressure.textContent = formatNumber(data.pressure);
+    elements.temperature.textContent = formatNumber(temperature);
     elements.rpm.textContent = formatNumber(data.rpm, 0);
-    elements.power.textContent = formatNumber(data.power, 1);
+    elements.power.textContent = formatNumber(data.power);
     
     // Update calculated values
     const liftDragRatio = calculateLiftDragRatio(data.lift, data.drag);
-    elements.liftDragRatio.textContent = liftDragRatio === '--' ? '--' : formatNumber(parseFloat(liftDragRatio), 2);
+    elements.liftDragRatio.textContent = liftDragRatio === '--' ? '--' : formatNumber(parseFloat(liftDragRatio));
     
     // Update timestamp
     elements.timestamp.textContent = formatTimestamp(data.timestamp);

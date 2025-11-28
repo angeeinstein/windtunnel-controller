@@ -13,6 +13,10 @@ app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0  # Disable caching in development
 # Settings file path
 SETTINGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'settings.json')
 
+# Data logging file path (future implementation)
+# When implemented, ALL logged data will be in SI units for scientific integrity
+DATA_LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data_log.csv')
+
 # Default settings
 DEFAULT_SETTINGS = {
     'updateInterval': 500,
@@ -81,25 +85,54 @@ wind_tunnel_data = {
 }
 
 def generate_mock_data():
-    """Generate mock sensor data for testing. Replace with actual sensor readings."""
+    """
+    Generate mock sensor data in SI units.
+    
+    ALL DATA IS STORED AND TRANSMITTED IN SI UNITS:
+    - velocity: meters per second (m/s)
+    - lift: Newtons (N)
+    - drag: Newtons (N)
+    - pressure: kilopascals (kPa)
+    - temperature: degrees Celsius (°C)
+    - rpm: revolutions per minute (RPM)
+    - power: Watts (W)
+    - timestamp: Unix timestamp (seconds)
+    
+    Unit conversions are handled client-side for display only.
+    Data logging, calculations, and storage always use SI units.
+    """
+    velocity = 15.5 + random.uniform(-2, 2)  # m/s
+    lift = 125.3 + random.uniform(-10, 10)  # N
+    drag = 45.2 + random.uniform(-5, 5)  # N
+    pressure = 101.3 + random.uniform(-0.5, 0.5)  # kPa
+    temperature = 22.5 + random.uniform(-1, 1)  # °C
+    rpm = 3500 + random.randint(-100, 100)  # RPM
+    power = 850 + random.uniform(-50, 50)  # W
+    lift_drag = lift / drag if drag != 0 else 0
+    
     return {
-        'velocity': round(random.uniform(0, 50), 2),
-        'lift': round(random.uniform(-5, 15), 2),
-        'drag': round(random.uniform(0, 10), 2),
-        'pressure': round(random.uniform(100, 102), 3),
-        'temperature': round(random.uniform(18, 25), 1),
-        'rpm': random.randint(0, 3000),
-        'power': round(random.uniform(0, 500), 1),
+        'velocity': velocity,
+        'lift': lift,
+        'drag': drag,
+        'pressure': pressure,
+        'temperature': temperature,
+        'rpm': rpm,
+        'power': power,
+        'liftDragRatio': lift_drag,
         'timestamp': time.time()
     }
 
 def background_data_updater():
-    """Background thread to continuously send data updates to connected clients."""
+    """
+    Background thread to send data updates to all connected clients.
+    Uses configurable update interval from settings.
+    All data transmitted in SI units.
+    """
     while True:
-        socketio.sleep(0.5)  # Update every 500ms
-        global wind_tunnel_data
-        wind_tunnel_data = generate_mock_data()
-        socketio.emit('data_update', wind_tunnel_data, namespace='/')
+        data = generate_mock_data()
+        socketio.emit('data_update', data)
+        # Use configurable update interval (convert ms to seconds)
+        time.sleep(current_settings.get('updateInterval', 500) / 1000)
 
 @app.route('/')
 def index():
@@ -110,6 +143,59 @@ def index():
 def settings():
     """Settings page."""
     return render_template('settings.html')
+
+@app.route('/api/settings', methods=['GET'])
+def get_settings():
+    """Get current settings."""
+    return jsonify(current_settings)
+
+@app.route('/api/settings', methods=['POST'])
+def update_settings():
+    """Update settings."""
+    from flask import request
+    global current_settings
+    
+    try:
+        new_settings = request.get_json()
+        
+        # Validate and update settings
+        if new_settings:
+            # Validate numeric fields
+            if 'updateInterval' in new_settings:
+                new_settings['updateInterval'] = max(100, min(5000, int(new_settings['updateInterval'])))
+            if 'decimalPlaces' in new_settings:
+                new_settings['decimalPlaces'] = max(0, min(5, int(new_settings['decimalPlaces'])))
+            if 'highVelocity' in new_settings:
+                new_settings['highVelocity'] = max(0, min(200, float(new_settings['highVelocity'])))
+            
+            # Update current settings
+            current_settings.update(new_settings)
+            
+            # Save to file
+            if save_settings_to_file(current_settings):
+                # Emit settings update to all connected clients
+                socketio.emit('settings_updated', current_settings)
+                return jsonify({'status': 'success', 'message': 'Settings saved successfully'})
+            else:
+                return jsonify({'status': 'error', 'message': 'Failed to save settings to file'}), 500
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+    
+    return jsonify({'status': 'error', 'message': 'Invalid request'}), 400
+
+@app.route('/api/settings/reset', methods=['POST'])
+def reset_settings():
+    """Reset settings to defaults."""
+    global current_settings
+    
+    current_settings = DEFAULT_SETTINGS.copy()
+    
+    if save_settings_to_file(current_settings):
+        # Emit settings update to all connected clients
+        socketio.emit('settings_updated', current_settings)
+        return jsonify({'status': 'success', 'message': 'Settings reset to defaults'})
+    else:
+        return jsonify({'status': 'error', 'message': 'Failed to save settings'}), 500
 
 @app.route('/api/update', methods=['POST'])
 def trigger_update():
