@@ -237,6 +237,7 @@ main {
     z-index: 999;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
 }
 
 .graph-modal-header {
@@ -247,6 +248,7 @@ main {
     justify-content: space-between;
     align-items: center;
     border-bottom: 3px solid var(--secondary-color);
+    flex-shrink: 0;
 }
 
 .graph-modal-header h2 {
@@ -255,6 +257,44 @@ main {
     color: white;
     text-transform: none;
     letter-spacing: 0;
+}
+
+.graph-controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.reset-zoom-btn {
+    background: rgba(255, 255, 255, 0.1);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: bold;
+    transition: all 0.2s;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.reset-zoom-btn:active {
+    background: rgba(255, 255, 255, 0.3);
+    transform: scale(0.95);
+}
+
+.zoom-info {
+    color: white;
+    font-size: 13px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 100px;
+}
+
+.zoom-info div {
+    font-family: 'Courier New', monospace;
 }
 
 .graph-close-btn {
@@ -291,6 +331,7 @@ main {
     width: 100%;
     height: 100%;
     max-height: calc(100vh - 200px);
+    touch-action: none;
 }
 
 /* Control Panel */

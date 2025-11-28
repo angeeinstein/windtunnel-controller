@@ -317,22 +317,73 @@ function updateAllSparklines() {
 // Fullscreen graph variables
 let currentGraphKey = null;
 let fullscreenAnimationFrame = null;
+let graphZoomX = 1.0; // X-axis zoom (time)
+let graphZoomY = 1.0; // Y-axis zoom (value range)
+let graphStartTime = null;
+
+// Touch handling for pinch zoom
+let touchStartDistance = 0;
+let touchStartAngle = 0;
+let touchStartZoomX = 1.0;
+let touchStartZoomY = 1.0;
+
+// Calculate distance between two touch points
+function getTouchDistance(touch1, touch2) {
+    const dx = touch2.clientX - touch1.clientX;
+    const dy = touch2.clientY - touch1.clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+}
+
+// Calculate angle of pinch gesture (0 = horizontal, 90 = vertical)
+function getTouchAngle(touch1, touch2) {
+    const dx = Math.abs(touch2.clientX - touch1.clientX);
+    const dy = Math.abs(touch2.clientY - touch1.clientY);
+    return Math.atan2(dy, dx) * (180 / Math.PI);
+}
+
+// Reset zoom to default
+function resetZoom() {
+    graphZoomX = 1.0;
+    graphZoomY = 1.0;
+    updateZoomDisplay();
+}
+
+// Update zoom level display
+function updateZoomDisplay() {
+    document.getElementById('zoomX').textContent = Math.round(graphZoomX * 100) + '%';
+    document.getElementById('zoomY').textContent = Math.round(graphZoomY * 100) + '%';
+}
 
 // Open fullscreen graph
 function openFullscreenGraph(key, title) {
     currentGraphKey = key;
+    graphZoomX = 1.0;
+    graphZoomY = 1.0;
+    graphStartTime = Date.now();
     document.getElementById('graphModalTitle').textContent = title;
     document.getElementById('graphModal').style.display = 'flex';
+    updateZoomDisplay();
+    
+    const canvas = document.getElementById('fullscreenGraph');
+    
+    // Add touch event listeners for pinch zoom
+    canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+    canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
     
     // Start animation loop for fullscreen graph
     const drawFullscreenGraph = () => {
-        const canvas = document.getElementById('fullscreenGraph');
-        const data = graphData[key];
+        const allData = graphData[key];
         
-        if (!data || data.length === 0) {
+        if (!allData || allData.length === 0) {
             fullscreenAnimationFrame = requestAnimationFrame(drawFullscreenGraph);
             return;
         }
+        
+        // Calculate how many points to show based on X zoom
+        const pointsToShow = Math.max(5, Math.floor(allData.length / graphZoomX));
+        const startIndex = Math.max(0, allData.length - pointsToShow);
+        const data = allData.slice(startIndex);
         
         const ctx = canvas.getContext('2d');
         const container = canvas.parentElement;
@@ -341,18 +392,26 @@ function openFullscreenGraph(key, title) {
         
         const width = canvas.width;
         const height = canvas.height;
-        const padding = 60;
+        const padding = 80;
+        const bottomPadding = 100;
         const graphWidth = width - 2 * padding;
-        const graphHeight = height - 2 * padding;
+        const graphHeight = height - padding - bottomPadding;
         
         // Clear canvas
         ctx.fillStyle = '#f8f9fa';
         ctx.fillRect(0, 0, width, height);
         
         // Find min and max
-        const min = Math.min(...data);
-        const max = Math.max(...data);
-        const range = max - min || 1;
+        const dataMin = Math.min(...data);
+        const dataMax = Math.max(...data);
+        const dataRange = dataMax - dataMin || 1;
+        
+        // Apply Y-axis zoom by adjusting the visible range
+        const center = (dataMax + dataMin) / 2;
+        const zoomedRange = dataRange / graphZoomY;
+        const min = center - zoomedRange / 2;
+        const max = center + zoomedRange / 2;
+        const range = max - min;
         
         // Draw grid lines
         ctx.strokeStyle = '#dfe6e9';
@@ -369,20 +428,36 @@ function openFullscreenGraph(key, title) {
             // Y-axis labels
             const value = max - (i / 5) * range;
             ctx.fillStyle = '#2c3e50';
-            ctx.font = '14px Segoe UI';
+            ctx.font = 'bold 16px Segoe UI';
             ctx.textAlign = 'right';
             ctx.fillText(formatNumber(value, 2), padding - 10, y + 5);
         }
         
-        // Vertical grid lines
-        const timeStep = Math.ceil(data.length / 10);
-        for (let i = 0; i <= 10; i++) {
-            const x = padding + (i / 10) * graphWidth;
+        // Vertical grid lines and time labels
+        const numTimeLabels = 6;
+        for (let i = 0; i <= numTimeLabels; i++) {
+            const x = padding + (i / numTimeLabels) * graphWidth;
+            ctx.strokeStyle = '#dfe6e9';
+            ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.moveTo(x, padding);
-            ctx.lineTo(x, height - padding);
+            ctx.lineTo(x, padding + graphHeight);
             ctx.stroke();
+            
+            // Time labels (seconds ago)
+            const dataIndex = Math.floor((i / numTimeLabels) * (data.length - 1));
+            const secondsAgo = (allData.length - startIndex - dataIndex) * (currentSettings.updateInterval || 500) / 1000;
+            ctx.fillStyle = '#2c3e50';
+            ctx.font = '14px Segoe UI';
+            ctx.textAlign = 'center';
+            ctx.fillText('-' + secondsAgo.toFixed(1) + 's', x, padding + graphHeight + 25);
         }
+        
+        // Time axis label
+        ctx.fillStyle = '#2c3e50';
+        ctx.font = 'bold 18px Segoe UI';
+        ctx.textAlign = 'center';
+        ctx.fillText('Time (seconds ago)', width / 2, height - 20);
         
         // Draw data line
         ctx.strokeStyle = '#3498db';
@@ -391,45 +466,64 @@ function openFullscreenGraph(key, title) {
         ctx.lineJoin = 'round';
         
         ctx.beginPath();
+        let pathStarted = false;
         data.forEach((value, index) => {
             const x = padding + (index / (data.length - 1 || 1)) * graphWidth;
-            const y = height - padding - ((value - min) / range) * graphHeight;
+            const y = padding + graphHeight - ((value - min) / range) * graphHeight;
             
-            if (index === 0) {
-                ctx.moveTo(x, y);
-            } else {
-                ctx.lineTo(x, y);
+            // Only draw points within visible range
+            if (y >= padding && y <= padding + graphHeight) {
+                if (!pathStarted) {
+                    ctx.moveTo(x, y);
+                    pathStarted = true;
+                } else {
+                    ctx.lineTo(x, y);
+                }
             }
         });
         ctx.stroke();
         
         // Draw fill
-        ctx.lineTo(padding + graphWidth, height - padding);
-        ctx.lineTo(padding, height - padding);
-        ctx.closePath();
-        
-        const gradient = ctx.createLinearGradient(0, padding, 0, height - padding);
-        gradient.addColorStop(0, '#3498db60');
-        gradient.addColorStop(1, '#3498db00');
-        ctx.fillStyle = gradient;
-        ctx.fill();
+        if (pathStarted) {
+            ctx.lineTo(padding + graphWidth, padding + graphHeight);
+            ctx.lineTo(padding, padding + graphHeight);
+            ctx.closePath();
+            
+            const gradient = ctx.createLinearGradient(0, padding, 0, padding + graphHeight);
+            gradient.addColorStop(0, '#3498db60');
+            gradient.addColorStop(1, '#3498db00');
+            ctx.fillStyle = gradient;
+            ctx.fill();
+        }
         
         // Draw current value marker
         if (data.length > 0) {
             const lastValue = data[data.length - 1];
             const x = padding + graphWidth;
-            const y = height - padding - ((lastValue - min) / range) * graphHeight;
+            const y = padding + graphHeight - ((lastValue - min) / range) * graphHeight;
             
-            ctx.fillStyle = '#e74c3c';
-            ctx.beginPath();
-            ctx.arc(x, y, 6, 0, Math.PI * 2);
-            ctx.fill();
-            
-            // Value label
-            ctx.fillStyle = '#2c3e50';
-            ctx.font = 'bold 18px Segoe UI';
-            ctx.textAlign = 'left';
-            ctx.fillText(formatNumber(lastValue, 2), x + 15, y + 6);
+            // Only show marker if within visible range
+            if (y >= padding && y <= padding + graphHeight) {
+                ctx.fillStyle = '#e74c3c';
+                ctx.beginPath();
+                ctx.arc(x, y, 8, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Value label with background
+                ctx.fillStyle = '#2c3e50';
+                ctx.font = 'bold 20px Segoe UI';
+                ctx.textAlign = 'left';
+                const valueText = formatNumber(lastValue, 2);
+                const textWidth = ctx.measureText(valueText).width;
+                
+                // Draw background for text
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+                ctx.fillRect(x + 10, y - 15, textWidth + 10, 30);
+                
+                // Draw text
+                ctx.fillStyle = '#2c3e50';
+                ctx.fillText(valueText, x + 15, y + 7);
+            }
         }
         
         fullscreenAnimationFrame = requestAnimationFrame(drawFullscreenGraph);
@@ -438,17 +532,78 @@ function openFullscreenGraph(key, title) {
     drawFullscreenGraph();
 }
 
+// Touch event handlers
+function handleTouchStart(e) {
+    if (e.touches.length === 2) {
+        e.preventDefault();
+        touchStartDistance = getTouchDistance(e.touches[0], e.touches[1]);
+        touchStartAngle = getTouchAngle(e.touches[0], e.touches[1]);
+        touchStartZoomX = graphZoomX;
+        touchStartZoomY = graphZoomY;
+    }
+}
+
+function handleTouchMove(e) {
+    if (e.touches.length === 2) {
+        e.preventDefault();
+        
+        const currentDistance = getTouchDistance(e.touches[0], e.touches[1]);
+        const currentAngle = getTouchAngle(e.touches[0], e.touches[1]);
+        const zoomFactor = currentDistance / touchStartDistance;
+        
+        // Determine if pinch is more horizontal or vertical
+        // angle near 0° = horizontal = zoom X
+        // angle near 90° = vertical = zoom Y
+        // angle near 45° = diagonal = zoom both
+        
+        const horizontalWeight = Math.cos(currentAngle * Math.PI / 180);
+        const verticalWeight = Math.sin(currentAngle * Math.PI / 180);
+        
+        // Apply zoom based on gesture direction
+        if (horizontalWeight > 0.7) {
+            // Mostly horizontal - zoom X axis
+            graphZoomX = Math.max(0.2, Math.min(10.0, touchStartZoomX * zoomFactor));
+        } else if (verticalWeight > 0.7) {
+            // Mostly vertical - zoom Y axis
+            graphZoomY = Math.max(0.2, Math.min(10.0, touchStartZoomY * zoomFactor));
+        } else {
+            // Diagonal - zoom both axes
+            graphZoomX = Math.max(0.2, Math.min(10.0, touchStartZoomX * zoomFactor));
+            graphZoomY = Math.max(0.2, Math.min(10.0, touchStartZoomY * zoomFactor));
+        }
+        
+        updateZoomDisplay();
+    }
+}
+
+function handleTouchEnd(e) {
+    if (e.touches.length < 2) {
+        touchStartDistance = 0;
+        touchStartAngle = 0;
+    }
+}
+
 // Close fullscreen graph
 function closeFullscreenGraph() {
+    const canvas = document.getElementById('fullscreenGraph');
+    
+    // Remove touch event listeners
+    canvas.removeEventListener('touchstart', handleTouchStart);
+    canvas.removeEventListener('touchmove', handleTouchMove);
+    canvas.removeEventListener('touchend', handleTouchEnd);
+    
     document.getElementById('graphModal').style.display = 'none';
     if (fullscreenAnimationFrame) {
         cancelAnimationFrame(fullscreenAnimationFrame);
         fullscreenAnimationFrame = null;
     }
     currentGraphKey = null;
+    graphZoomX = 1.0;
+    graphZoomY = 1.0;
 }
 
 // Make functions globally accessible
 window.openFullscreenGraph = openFullscreenGraph;
 window.closeFullscreenGraph = closeFullscreenGraph;
+window.resetZoom = resetZoom;
 
