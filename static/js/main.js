@@ -359,7 +359,7 @@ function updateAllSparklines() {
 // Fullscreen graph variables
 let currentGraphKey = null;
 let fullscreenAnimationFrame = null;
-let graphZoomX = 0.025; // X-axis zoom (time) - default to showing 50 out of 2000 points
+let graphZoomX = 0.01; // X-axis zoom (time) - default to 10 seconds (20 points at 500ms)
 let graphZoomY = 1.0; // Y-axis zoom (value range)
 let graphStartTime = null;
 let graphScrollOffset = 0; // Scroll back in time (0 = live, positive = seconds in past)
@@ -392,7 +392,7 @@ function getTouchAngle(touch1, touch2) {
 
 // Reset zoom to default
 function resetZoom() {
-    graphZoomX = 0.025; // Show 50 out of 2000 points by default
+    graphZoomX = 0.01; // Show 10 seconds (20 points at 500ms intervals)
     graphZoomY = 1.0;
     graphScrollOffset = 0;
     updateZoomDisplay();
@@ -439,7 +439,7 @@ async function loadHistoricalData(sensorId) {
 // Open fullscreen graph
 function openFullscreenGraph(key, title) {
     currentGraphKey = key;
-    graphZoomX = 0.025; // Show 50 out of 2000 points by default
+    graphZoomX = 0.01; // Show 10 seconds by default
     graphZoomY = 1.0;
     graphScrollOffset = 0;
     graphStartTime = Date.now();
@@ -478,13 +478,14 @@ function openFullscreenGraph(key, title) {
             return;
         }
         
-        // Calculate how many points to show based on X zoom
-        // graphZoomX of 1.0 = show all points, 0.5 = show half, 0.025 = show 2.5% (50 of 2000)
-        const targetPoints = Math.floor(2000 * graphZoomX); // Calculate based on max buffer size
+        // Calculate how many points to show based on X zoom and update interval
+        // Zoom represents time window in seconds: 0.01 = 10 seconds, 0.02 = 20 seconds, etc.
+        const updateIntervalSec = (currentSettings.updateInterval || 500) / 1000;
+        const timeWindowSeconds = graphZoomX * 1000; // Convert zoom to seconds (0.01 = 10s)
+        const targetPoints = Math.ceil(timeWindowSeconds / updateIntervalSec);
         const pointsToShow = Math.max(5, Math.min(targetPoints, allData.length)); // Cap at available data
         
         // Apply scroll offset (in seconds converted to data points)
-        const updateIntervalSec = (currentSettings.updateInterval || 500) / 1000;
         const scrollOffsetPoints = Math.floor(graphScrollOffset / updateIntervalSec);
         
         // Calculate window of data to show
@@ -576,7 +577,11 @@ function openFullscreenGraph(key, title) {
         ctx.beginPath();
         let pathStarted = false;
         data.forEach((value, index) => {
-            const x = padding + (index / (data.length - 1 || 1)) * graphWidth;
+            // Position points based on actual time within the target time window
+            // This makes the graph fill from left to right as data accumulates
+            const actualPointsInWindow = data.length;
+            const xPosition = (index / (targetPoints - 1 || 1)) * graphWidth; // Use target points for spacing
+            const x = padding + xPosition;
             const y = padding + graphHeight - ((value - min) / range) * graphHeight;
             
             // Only draw points within visible range
@@ -741,7 +746,7 @@ function closeFullscreenGraph() {
         fullscreenAnimationFrame = null;
     }
     currentGraphKey = null;
-    graphZoomX = 0.025;
+    graphZoomX = 0.01;
     graphZoomY = 1.0;
     graphScrollOffset = 0;
     historicalData = null;
