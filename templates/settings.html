@@ -311,6 +311,186 @@
         .progress-log-line.info {
             color: var(--secondary-color);
         }
+
+        /* Sensor Configuration Modal */
+        .sensor-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .sensor-modal-content {
+            background: var(--card-background);
+            border-radius: 12px;
+            max-width: 900px;
+            width: 100%;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .sensor-modal-header {
+            padding: 25px 30px;
+            border-bottom: 2px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .sensor-modal-header h2 {
+            margin: 0;
+            color: var(--primary-color);
+        }
+
+        .sensor-modal-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px 30px;
+        }
+
+        .sensor-modal-footer {
+            padding: 20px 30px;
+            border-top: 2px solid var(--border-color);
+            display: flex;
+            justify-content: flex-end;
+            gap: 15px;
+        }
+
+        .sensor-list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .sensor-item {
+            background: #f8f9fa;
+            border: 2px solid var(--border-color);
+            border-radius: 10px;
+            padding: 20px;
+            position: relative;
+        }
+
+        .sensor-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .sensor-item-controls {
+            display: flex;
+            gap: 8px;
+        }
+
+        .sensor-item-btn {
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid var(--border-color);
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .sensor-item-btn:hover {
+            background: var(--secondary-color);
+            color: white;
+            border-color: var(--secondary-color);
+        }
+
+        .sensor-item-btn.danger:hover {
+            background: var(--accent-color);
+            border-color: var(--accent-color);
+        }
+
+        .sensor-fields {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+        }
+
+        .sensor-field {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .sensor-field label {
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+
+        .sensor-field input,
+        .sensor-field select {
+            padding: 10px;
+            border: 2px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 1rem;
+        }
+
+        .sensor-field input:focus,
+        .sensor-field select:focus {
+            outline: none;
+            border-color: var(--secondary-color);
+        }
+
+        .sensor-field input[type="color"] {
+            height: 45px;
+            cursor: pointer;
+        }
+
+        .add-sensor-btn {
+            width: 100%;
+            padding: 15px;
+            background: var(--success-color);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.3s;
+        }
+
+        .add-sensor-btn:hover {
+            background: #229954;
+        }
+
+        .cancel-btn {
+            padding: 12px 30px;
+            background: var(--text-secondary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .cancel-btn:hover {
+            background: #5f6a6a;
+        }
+
+        .config-fields {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid var(--border-color);
+        }
     </style>
 </head>
 <body>
@@ -436,6 +616,16 @@
                 </div>
                 <div class="setting-control">
                     <input type="text" class="setting-input" value="Wind Tunnel Alpha" id="systemName" style="min-width: 250px;">
+                </div>
+            </div>
+
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">Sensor Configuration</div>
+                    <div class="setting-description">Configure sensors displayed on the dashboard</div>
+                </div>
+                <div class="setting-control">
+                    <button class="save-btn" onclick="openSensorConfig()" style="margin: 0; padding: 12px 30px; font-size: 1.1rem;">Configure Sensors</button>
                 </div>
             </div>
 
@@ -649,6 +839,175 @@
             });
         }
 
+        // Sensor Configuration
+        let sensors = [];
+        let sensorTypes = {};
+        let sensorIdCounter = 0;
+
+        async function openSensorConfig() {
+            // Load sensor types
+            try {
+                const typesResponse = await fetch('/api/sensor-types');
+                sensorTypes = await typesResponse.json();
+                
+                // Load current sensors
+                const sensorsResponse = await fetch('/api/sensors');
+                sensors = await sensorsResponse.json();
+                
+                renderSensorList();
+                document.getElementById('sensorModal').style.display = 'flex';
+            } catch (error) {
+                showNotification('Error', 'Failed to load sensor configuration', 'error');
+                console.error('Error loading sensors:', error);
+            }
+        }
+
+        function closeSensorConfig() {
+            document.getElementById('sensorModal').style.display = 'none';
+        }
+
+        function renderSensorList() {
+            const container = document.getElementById('sensorList');
+            container.innerHTML = '';
+            
+            sensors.forEach((sensor, index) => {
+                const sensorDiv = document.createElement('div');
+                sensorDiv.className = 'sensor-item';
+                sensorDiv.innerHTML = `
+                    <div class="sensor-item-header">
+                        <h3 style="margin: 0; color: var(--primary-color);">Sensor ${index + 1}</h3>
+                        <div class="sensor-item-controls">
+                            ${index > 0 ? `<button class="sensor-item-btn" onclick="moveSensor(${index}, -1)">↑</button>` : ''}
+                            ${index < sensors.length - 1 ? `<button class="sensor-item-btn" onclick="moveSensor(${index}, 1)">↓</button>` : ''}
+                            <button class="sensor-item-btn danger" onclick="deleteSensor(${index})">Delete</button>
+                        </div>
+                    </div>
+                    <div class="sensor-fields">
+                        <div class="sensor-field">
+                            <label>Sensor Name</label>
+                            <input type="text" value="${sensor.name}" onchange="updateSensor(${index}, 'name', this.value)">
+                        </div>
+                        <div class="sensor-field">
+                            <label>Sensor Type</label>
+                            <select onchange="updateSensor(${index}, 'type', this.value); renderSensorList();">
+                                ${Object.keys(sensorTypes).map(type => 
+                                    `<option value="${type}" ${sensor.type === type ? 'selected' : ''}>${sensorTypes[type].name}</option>`
+                                ).join('')}
+                            </select>
+                        </div>
+                        <div class="sensor-field">
+                            <label>Unit</label>
+                            <input type="text" value="${sensor.unit || ''}" onchange="updateSensor(${index}, 'unit', this.value)">
+                        </div>
+                        <div class="sensor-field">
+                            <label>Graph Color</label>
+                            <input type="color" value="${sensor.color || '#3498db'}" onchange="updateSensor(${index}, 'color', this.value)">
+                        </div>
+                        <div class="sensor-field">
+                            <label>Enabled</label>
+                            <select onchange="updateSensor(${index}, 'enabled', this.value === 'true')">
+                                <option value="true" ${sensor.enabled !== false ? 'selected' : ''}>Yes</option>
+                                <option value="false" ${sensor.enabled === false ? 'selected' : ''}>No</option>
+                            </select>
+                        </div>
+                    </div>
+                    ${renderSensorConfigFields(sensor, index)}
+                `;
+                container.appendChild(sensorDiv);
+            });
+        }
+
+        function renderSensorConfigFields(sensor, index) {
+            const type = sensorTypes[sensor.type];
+            if (!type || !type.fields || type.fields.length === 0) {
+                return '';
+            }
+            
+            let html = '<div class="config-fields"><div class="sensor-fields">';
+            type.fields.forEach(field => {
+                const value = sensor.config?.[field.name] || '';
+                html += `
+                    <div class="sensor-field">
+                        <label>${field.label}</label>
+                        <input 
+                            type="${field.type}" 
+                            placeholder="${field.placeholder}" 
+                            value="${value}"
+                            onchange="updateSensorConfig(${index}, '${field.name}', this.value)">
+                    </div>
+                `;
+            });
+            html += '</div></div>';
+            return html;
+        }
+
+        function addNewSensor() {
+            const newSensor = {
+                id: `sensor_${Date.now()}_${sensorIdCounter++}`,
+                name: `New Sensor ${sensors.length + 1}`,
+                type: 'mock',
+                unit: '',
+                color: '#3498db',
+                enabled: true,
+                config: {}
+            };
+            sensors.push(newSensor);
+            renderSensorList();
+        }
+
+        function updateSensor(index, field, value) {
+            sensors[index][field] = value;
+        }
+
+        function updateSensorConfig(index, field, value) {
+            if (!sensors[index].config) {
+                sensors[index].config = {};
+            }
+            sensors[index].config[field] = value;
+        }
+
+        function deleteSensor(index) {
+            confirmAction(`Delete sensor "${sensors[index].name}"?`, () => {
+                sensors.splice(index, 1);
+                renderSensorList();
+            });
+        }
+
+        function moveSensor(index, direction) {
+            const newIndex = index + direction;
+            if (newIndex < 0 || newIndex >= sensors.length) return;
+            
+            [sensors[index], sensors[newIndex]] = [sensors[newIndex], sensors[index]];
+            renderSensorList();
+        }
+
+        async function saveSensorConfig() {
+            try {
+                // Update settings with new sensor configuration
+                const currentSettings = await fetch('/api/settings').then(r => r.json());
+                currentSettings.sensors = sensors;
+                
+                const response = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(currentSettings)
+                });
+                
+                const data = await response.json();
+                if (data.status === 'success') {
+                    showNotification('Sensors Saved', 'Sensor configuration has been updated', 'success');
+                    closeSensorConfig();
+                    // Reload the page to update dashboard
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    showNotification('Error', data.message, 'error');
+                }
+            } catch (error) {
+                showNotification('Error', 'Failed to save sensor configuration', 'error');
+                console.error('Error saving sensors:', error);
+            }
+        }
+
         // Clear logs
         function clearLogs() {
             confirmAction('Are you sure you want to clear all data logs? This cannot be undone.', () => {
@@ -860,5 +1219,39 @@
                 });
         });
     </script>
+
+    <!-- Sensor Configuration Modal -->
+    <div id="sensorModal" class="sensor-modal" style="display: none;">
+        <div class="sensor-modal-content">
+            <div class="sensor-modal-header">
+                <h2>Sensor Configuration</h2>
+                <button class="graph-close-btn" onclick="closeSensorConfig()" style="width: 40px; height: 40px;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            
+            <div class="sensor-modal-body">
+                <div class="sensor-list" id="sensorList">
+                    <!-- Sensors will be dynamically added here -->
+                </div>
+                
+                <button class="add-sensor-btn" onclick="addNewSensor()">
+                    <span style="font-size: 24px; margin-right: 8px;">+</span> Add New Sensor
+                </button>
+            </div>
+            
+            <div class="sensor-modal-footer">
+                <button class="cancel-btn" onclick="closeSensorConfig()">Cancel</button>
+                <button class="save-btn" onclick="saveSensorConfig()">Save Sensors</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Container -->
+    <div id="notificationContainer" style="position: fixed; top: 80px; right: 20px; z-index: 10000;"></div>
+
 </body>
 </html>

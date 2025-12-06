@@ -28,81 +28,8 @@
         </header>
 
         <main>
-            <div class="data-grid">
-                <!-- Primary Measurements -->
-                <div class="data-card primary" onclick="openFullscreenGraph('velocity', 'Velocity')">
-                    <h2>Velocity</h2>
-                    <div class="value-display">
-                        <span class="value" id="velocity">--</span>
-                        <span class="unit" id="velocity-unit">m/s</span>
-                    </div>
-                    <canvas class="sparkline" id="sparkline-velocity"></canvas>
-                </div>
-
-                <div class="data-card primary" onclick="openFullscreenGraph('lift', 'Lift Force')">
-                    <h2>Lift Force</h2>
-                    <div class="value-display">
-                        <span class="value" id="lift">--</span>
-                        <span class="unit">N</span>
-                    </div>
-                    <canvas class="sparkline" id="sparkline-lift"></canvas>
-                </div>
-
-                <div class="data-card primary" onclick="openFullscreenGraph('drag', 'Drag Force')">
-                    <h2>Drag Force</h2>
-                    <div class="value-display">
-                        <span class="value" id="drag">--</span>
-                        <span class="unit">N</span>
-                    </div>
-                    <canvas class="sparkline" id="sparkline-drag"></canvas>
-                </div>
-
-                <!-- Secondary Measurements -->
-                <div class="data-card" onclick="openFullscreenGraph('pressure', 'Pressure')">
-                    <h2>Pressure</h2>
-                    <div class="value-display">
-                        <span class="value" id="pressure">--</span>
-                        <span class="unit">kPa</span>
-                    </div>
-                    <canvas class="sparkline" id="sparkline-pressure"></canvas>
-                </div>
-
-                <div class="data-card" onclick="openFullscreenGraph('temperature', 'Temperature')">
-                    <h2>Temperature</h2>
-                    <div class="value-display">
-                        <span class="value" id="temperature">--</span>
-                        <span class="unit" id="temperature-unit">°C</span>
-                    </div>
-                    <canvas class="sparkline" id="sparkline-temperature"></canvas>
-                </div>
-
-                <div class="data-card" onclick="openFullscreenGraph('rpm', 'Fan RPM')">
-                    <h2>Fan RPM</h2>
-                    <div class="value-display">
-                        <span class="value" id="rpm">--</span>
-                        <span class="unit">RPM</span>
-                    </div>
-                    <canvas class="sparkline" id="sparkline-rpm"></canvas>
-                </div>
-
-                <div class="data-card" onclick="openFullscreenGraph('power', 'Power')">
-                    <h2>Power</h2>
-                    <div class="value-display">
-                        <span class="value" id="power">--</span>
-                        <span class="unit">W</span>
-                    </div>
-                    <canvas class="sparkline" id="sparkline-power"></canvas>
-                </div>
-
-                <!-- Calculated Values -->
-                <div class="data-card calculated" onclick="openFullscreenGraph('liftDragRatio', 'Lift/Drag Ratio')">
-                    <h2>Lift/Drag Ratio</h2>
-                    <div class="value-display">
-                        <span class="value" id="liftDragRatio">--</span>
-                        <span class="unit"></span>
-                    </div>
-                    <canvas class="sparkline" id="sparkline-liftDragRatio"></canvas>
-                </div>
+            <div class="data-grid" id="dataGrid">
+                <!-- Sensor cards will be dynamically generated here -->
             </div>
 
             <!-- Control Panel (for future expansion) -->
@@ -144,6 +71,6 @@
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/main.js') }}?v=5"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}?v=6"></script>
 </body>
 </html>

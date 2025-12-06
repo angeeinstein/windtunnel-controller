@@ -27,7 +27,62 @@ DEFAULT_SETTINGS = {
     'autoCalculate': True,
     'dataLogging': False,
     'highVelocity': 50,
-    'systemName': 'Wind Tunnel Alpha'
+    'systemName': 'Wind Tunnel Alpha',
+    'sensors': []
+}
+
+# Default sensor configurations (when no sensors are configured)
+DEFAULT_SENSORS = [
+    {'id': 'velocity', 'name': 'Velocity', 'type': 'mock', 'unit': 'm/s', 'color': '#e74c3c', 'enabled': True, 'config': {}},
+    {'id': 'lift', 'name': 'Lift Force', 'type': 'mock', 'unit': 'N', 'color': '#e74c3c', 'enabled': True, 'config': {}},
+    {'id': 'drag', 'name': 'Drag Force', 'type': 'mock', 'unit': 'N', 'color': '#e74c3c', 'enabled': True, 'config': {}},
+    {'id': 'pressure', 'name': 'Pressure', 'type': 'mock', 'unit': 'kPa', 'color': '#3498db', 'enabled': True, 'config': {}},
+    {'id': 'temperature', 'name': 'Temperature', 'type': 'mock', 'unit': '°C', 'color': '#3498db', 'enabled': True, 'config': {}},
+    {'id': 'rpm', 'name': 'Fan RPM', 'type': 'mock', 'unit': 'RPM', 'color': '#3498db', 'enabled': True, 'config': {}},
+    {'id': 'power', 'name': 'Power', 'type': 'mock', 'unit': 'W', 'color': '#3498db', 'enabled': True, 'config': {}},
+    {'id': 'liftDragRatio', 'name': 'Lift/Drag Ratio', 'type': 'calculated', 'unit': '', 'color': '#27ae60', 'enabled': True, 'config': {'formula': 'lift/drag'}}
+]
+
+# Sensor type definitions with required configuration fields
+SENSOR_TYPES = {
+    'mock': {
+        'name': 'Mock Data Generator',
+        'fields': []
+    },
+    'calculated': {
+        'name': 'Calculated Value',
+        'fields': [
+            {'name': 'formula', 'label': 'Formula', 'type': 'text', 'placeholder': 'e.g., lift/drag'}
+        ]
+    },
+    'gpio_analog': {
+        'name': 'GPIO Analog Input',
+        'fields': [
+            {'name': 'pin', 'label': 'GPIO Pin', 'type': 'number', 'placeholder': 'e.g., 17'}
+        ]
+    },
+    'i2c': {
+        'name': 'I2C Sensor',
+        'fields': [
+            {'name': 'address', 'label': 'I2C Address (hex)', 'type': 'text', 'placeholder': 'e.g., 0x48'},
+            {'name': 'bus', 'label': 'I2C Bus', 'type': 'number', 'placeholder': 'e.g., 1'}
+        ]
+    },
+    'spi': {
+        'name': 'SPI Sensor',
+        'fields': [
+            {'name': 'bus', 'label': 'SPI Bus', 'type': 'number', 'placeholder': 'e.g., 0'},
+            {'name': 'device', 'label': 'SPI Device', 'type': 'number', 'placeholder': 'e.g., 0'},
+            {'name': 'cs_pin', 'label': 'Chip Select Pin', 'type': 'number', 'placeholder': 'e.g., 8'}
+        ]
+    },
+    'uart': {
+        'name': 'UART/Serial Sensor',
+        'fields': [
+            {'name': 'port', 'label': 'Serial Port', 'type': 'text', 'placeholder': 'e.g., /dev/ttyUSB0'},
+            {'name': 'baudrate', 'label': 'Baud Rate', 'type': 'number', 'placeholder': 'e.g., 9600'}
+        ]
+    }
 }
 
 # Load settings from file
@@ -86,7 +141,7 @@ wind_tunnel_data = {
 
 def generate_mock_data():
     """
-    Generate mock sensor data in SI units.
+    Generate mock sensor data in SI units based on configured sensors.
     
     ALL DATA IS STORED AND TRANSMITTED IN SI UNITS:
     - velocity: meters per second (m/s)
@@ -101,26 +156,77 @@ def generate_mock_data():
     Unit conversions are handled client-side for display only.
     Data logging, calculations, and storage always use SI units.
     """
-    velocity = 15.5 + random.uniform(-2, 2)  # m/s
-    lift = 125.3 + random.uniform(-10, 10)  # N
-    drag = 45.2 + random.uniform(-5, 5)  # N
-    pressure = 101.3 + random.uniform(-0.5, 0.5)  # kPa
-    temperature = 22.5 + random.uniform(-1, 1)  # °C
-    rpm = 3500 + random.randint(-100, 100)  # RPM
-    power = 850 + random.uniform(-50, 50)  # W
-    lift_drag = lift / drag if drag != 0 else 0
+    sensors = current_settings.get('sensors', [])
+    if not sensors:
+        sensors = DEFAULT_SENSORS
     
-    return {
-        'velocity': velocity,
-        'lift': lift,
-        'drag': drag,
-        'pressure': pressure,
-        'temperature': temperature,
-        'rpm': rpm,
-        'power': power,
-        'liftDragRatio': lift_drag,
-        'timestamp': time.time()
-    }
+    data = {'timestamp': time.time()}
+    sensor_values = {}
+    
+    # Generate data for each enabled sensor
+    for sensor in sensors:
+        if not sensor.get('enabled', True):
+            continue
+            
+        sensor_id = sensor['id']
+        sensor_type = sensor['type']
+        
+        if sensor_type == 'mock':
+            # Generate random mock data based on sensor ID
+            if sensor_id == 'velocity' or 'velocity' in sensor['name'].lower():
+                value = 15.5 + random.uniform(-2, 2)
+            elif sensor_id == 'lift' or 'lift' in sensor['name'].lower():
+                value = 125.3 + random.uniform(-10, 10)
+            elif sensor_id == 'drag' or 'drag' in sensor['name'].lower():
+                value = 45.2 + random.uniform(-5, 5)
+            elif sensor_id == 'pressure' or 'pressure' in sensor['name'].lower():
+                value = 101.3 + random.uniform(-0.5, 0.5)
+            elif sensor_id == 'temperature' or 'temp' in sensor['name'].lower():
+                value = 22.5 + random.uniform(-1, 1)
+            elif sensor_id == 'rpm' or 'rpm' in sensor['name'].lower():
+                value = 3500 + random.randint(-100, 100)
+            elif sensor_id == 'power' or 'power' in sensor['name'].lower():
+                value = 850 + random.uniform(-50, 50)
+            else:
+                value = random.uniform(0, 100)
+            
+            sensor_values[sensor_id] = value
+            data[sensor_id] = value
+            
+        elif sensor_type == 'calculated':
+            # Handle calculated values (will be computed after all sensors)
+            pass
+        else:
+            # Real sensor reading (to be implemented)
+            # For now, generate mock data
+            value = random.uniform(0, 100)
+            sensor_values[sensor_id] = value
+            data[sensor_id] = value
+    
+    # Calculate derived values
+    for sensor in sensors:
+        if not sensor.get('enabled', True):
+            continue
+            
+        if sensor['type'] == 'calculated':
+            formula = sensor.get('config', {}).get('formula', '')
+            try:
+                # Simple formula evaluation (can be extended)
+                # Replace sensor IDs with their values
+                eval_formula = formula
+                for sid, val in sensor_values.items():
+                    eval_formula = eval_formula.replace(sid, str(val))
+                
+                # Safely evaluate simple math expressions
+                if all(c in '0123456789.+-*/() ' for c in eval_formula):
+                    value = eval(eval_formula)
+                    data[sensor['id']] = value
+                else:
+                    data[sensor['id']] = 0
+            except:
+                data[sensor['id']] = 0
+    
+    return data
 
 def background_data_updater():
     """
@@ -143,6 +249,19 @@ def index():
 def settings():
     """Settings page."""
     return render_template('settings.html')
+
+@app.route('/api/sensor-types', methods=['GET'])
+def get_sensor_types():
+    """Get available sensor types and their configuration requirements."""
+    return jsonify(SENSOR_TYPES)
+
+@app.route('/api/sensors', methods=['GET'])
+def get_sensors():
+    """Get configured sensors."""
+    sensors = current_settings.get('sensors', [])
+    if not sensors:
+        sensors = DEFAULT_SENSORS
+    return jsonify(sensors)
 
 @app.route('/api/settings', methods=['GET'])
 def get_settings():

@@ -1,37 +1,100 @@
 // WebSocket connection
 const socket = io();
 
-// Current settings (loaded from server)
+// Current settings and sensors (loaded from server)
 let currentSettings = {
     velocityUnit: 'ms',
     temperatureUnit: 'c',
-    decimalPlaces: 2
+    decimalPlaces: 2,
+    sensors: []
 };
 
-// Load settings from server
-fetch('/api/settings')
-    .then(response => response.json())
-    .then(settings => {
-        currentSettings = settings;
-        console.log('Settings loaded:', settings);
-        updateUnitLabels(); // Update unit labels on load
-    })
-    .catch(error => console.error('Failed to load settings:', error));
+let sensors = [];
+let elements = {};
+
+// Load settings and sensors from server
+async function loadConfiguration() {
+    try {
+        const settingsResponse = await fetch('/api/settings');
+        currentSettings = await settingsResponse.json();
+        
+        const sensorsResponse = await fetch('/api/sensors');
+        sensors = await sensorsResponse.json();
+        
+        console.log('Configuration loaded:', { settings: currentSettings, sensors });
+        
+        // Generate sensor cards
+        generateSensorCards();
+        updateUnitLabels();
+    } catch (error) {
+        console.error('Failed to load configuration:', error);
+    }
+}
+
+// Generate sensor cards dynamically
+function generateSensorCards() {
+    const dataGrid = document.getElementById('dataGrid');
+    dataGrid.innerHTML = '';
+    elements = {
+        timestamp: document.getElementById('timestamp'),
+        statusDot: document.getElementById('statusDot'),
+        statusText: document.getElementById('statusText')
+    };
+    
+    sensors.forEach(sensor => {
+        if (!sensor.enabled) return;
+        
+        const card = document.createElement('div');
+        const cardClass = sensor.type === 'calculated' ? 'data-card calculated' : 
+                         (sensor.color === '#e74c3c' ? 'data-card primary' : 'data-card');
+        card.className = cardClass;
+        card.onclick = () => openFullscreenGraph(sensor.id, sensor.name);
+        
+        card.innerHTML = `
+            <h2>${sensor.name}</h2>
+            <div class="value-display">
+                <span class="value" id="${sensor.id}">--</span>
+                <span class="unit" id="${sensor.id}-unit">${sensor.unit}</span>
+            </div>
+            <canvas class="sparkline" id="sparkline-${sensor.id}"></canvas>
+        `;
+        
+        dataGrid.appendChild(card);
+        
+        // Store element references
+        elements[sensor.id] = document.getElementById(sensor.id);
+        elements[sensor.id + '-unit'] = document.getElementById(sensor.id + '-unit');
+        
+        // Initialize graph data for this sensor
+        if (!graphData[sensor.id]) {
+            graphData[sensor.id] = [];
+        }
+    });
+}
 
 // Listen for settings updates
 socket.on('settings_updated', (settings) => {
     currentSettings = settings;
     console.log('Settings updated:', settings);
     updateUnitLabels();
+    // Reload sensors if needed
+    loadConfiguration();
 });
 
 // Update unit labels in UI
 function updateUnitLabels() {
-    const velocityUnitEl = document.getElementById('velocity-unit');
-    const tempUnitEl = document.getElementById('temperature-unit');
-    
-    if (velocityUnitEl) velocityUnitEl.textContent = getVelocityUnit();
-    if (tempUnitEl) tempUnitEl.textContent = getTemperatureUnit();
+    // Update velocity and temperature units for sensors that use them
+    sensors.forEach(sensor => {
+        const unitEl = document.getElementById(sensor.id + '-unit');
+        if (!unitEl) return;
+        
+        // Check if this sensor should have unit conversion
+        if (sensor.id === 'velocity' || sensor.name.toLowerCase().includes('velocity')) {
+            unitEl.textContent = getVelocityUnit();
+        } else if (sensor.id === 'temperature' || sensor.name.toLowerCase().includes('temp')) {
+            unitEl.textContent = getTemperatureUnit();
+        }
+    });
 }
 
 // Unit conversion functions
@@ -61,21 +124,6 @@ function getTemperatureUnit() {
     const units = { 'c': '°C', 'f': '°F', 'k': 'K' };
     return units[currentSettings.temperatureUnit] || '°C';
 }
-
-// DOM elements
-const elements = {
-    velocity: document.getElementById('velocity'),
-    lift: document.getElementById('lift'),
-    drag: document.getElementById('drag'),
-    pressure: document.getElementById('pressure'),
-    temperature: document.getElementById('temperature'),
-    rpm: document.getElementById('rpm'),
-    power: document.getElementById('power'),
-    liftDragRatio: document.getElementById('liftDragRatio'),
-    timestamp: document.getElementById('timestamp'),
-    statusDot: document.getElementById('statusDot'),
-    statusText: document.getElementById('statusText')
-};
 
 // Format timestamp
 function formatTimestamp(timestamp) {
@@ -125,39 +173,37 @@ function calculateLiftDragRatio(lift, drag) {
 
 // Update display with new data
 function updateDisplay(data) {
-    // Apply unit conversions
-    const velocity = convertVelocity(data.velocity);
-    const temperature = convertTemperature(data.temperature);
-    
-    // Update primary measurements with conversions
-    elements.velocity.textContent = formatNumber(velocity);
-    elements.lift.textContent = formatNumber(data.lift);
-    elements.drag.textContent = formatNumber(data.drag);
-    
-    // Update secondary measurements
-    elements.pressure.textContent = formatNumber(data.pressure);
-    elements.temperature.textContent = formatNumber(temperature);
-    elements.rpm.textContent = formatNumber(data.rpm, 0);
-    elements.power.textContent = formatNumber(data.power);
-    
-    // Update calculated values
-    const liftDragRatio = calculateLiftDragRatio(data.lift, data.drag);
-    elements.liftDragRatio.textContent = liftDragRatio === '--' ? '--' : formatNumber(parseFloat(liftDragRatio));
-    
     // Update timestamp
-    elements.timestamp.textContent = formatTimestamp(data.timestamp);
-    
-    // Add data points to graphs (use converted values for display)
-    addGraphDataPoint('velocity', velocity);
-    addGraphDataPoint('lift', data.lift);
-    addGraphDataPoint('drag', data.drag);
-    addGraphDataPoint('pressure', data.pressure);
-    addGraphDataPoint('temperature', temperature);
-    addGraphDataPoint('rpm', data.rpm);
-    addGraphDataPoint('power', data.power);
-    if (liftDragRatio !== '--') {
-        addGraphDataPoint('liftDragRatio', parseFloat(liftDragRatio));
+    if (elements.timestamp) {
+        elements.timestamp.textContent = formatTimestamp(data.timestamp);
     }
+    
+    // Update each sensor
+    sensors.forEach(sensor => {
+        if (!sensor.enabled || !elements[sensor.id]) return;
+        
+        let value = data[sensor.id];
+        if (value === undefined || value === null) return;
+        
+        // Apply unit conversions for specific sensor types
+        if (sensor.id === 'velocity' || sensor.name.toLowerCase().includes('velocity')) {
+            value = convertVelocity(value);
+        } else if (sensor.id === 'temperature' || sensor.name.toLowerCase().includes('temp')) {
+            value = convertTemperature(value);
+        }
+        
+        // Determine decimal places based on sensor type
+        let decimals = currentSettings.decimalPlaces || 2;
+        if (sensor.id === 'rpm' || sensor.name.toLowerCase().includes('rpm')) {
+            decimals = 0;
+        }
+        
+        // Update display
+        elements[sensor.id].textContent = formatNumber(value, decimals);
+        
+        // Add data points to graphs
+        addGraphDataPoint(sensor.id, value);
+    });
     
     // Update sparklines
     updateAllSparklines();
@@ -175,6 +221,7 @@ function updateDisplay(data) {
 // Connection status handlers
 socket.on('connect', () => {
     console.log('Connected to server');
+    loadConfiguration(); // Load sensors on connect
     elements.statusDot.classList.add('connected');
     elements.statusText.textContent = 'Connected';
     
@@ -303,15 +350,15 @@ function drawSparkline(canvasId, data, color = '#3498db') {
 }
 
 // Draw all sparklines
+// Draw all sparklines
 function updateAllSparklines() {
-    drawSparkline('sparkline-velocity', graphData.velocity, '#e74c3c');
-    drawSparkline('sparkline-lift', graphData.lift, '#e74c3c');
-    drawSparkline('sparkline-drag', graphData.drag, '#e74c3c');
-    drawSparkline('sparkline-pressure', graphData.pressure, '#3498db');
-    drawSparkline('sparkline-temperature', graphData.temperature, '#3498db');
-    drawSparkline('sparkline-rpm', graphData.rpm, '#3498db');
-    drawSparkline('sparkline-power', graphData.power, '#3498db');
-    drawSparkline('sparkline-liftDragRatio', graphData.liftDragRatio, '#27ae60');
+    sensors.forEach(sensor => {
+        if (!sensor.enabled) return;
+        const canvasId = 'sparkline-' + sensor.id;
+        const data = graphData[sensor.id];
+        const color = sensor.color || '#3498db';
+        drawSparkline(canvasId, data, color);
+    });
 }
 
 // Fullscreen graph variables
@@ -607,3 +654,5 @@ window.openFullscreenGraph = openFullscreenGraph;
 window.closeFullscreenGraph = closeFullscreenGraph;
 window.resetZoom = resetZoom;
 
+// Initialize on page load
+loadConfiguration();
