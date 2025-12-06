@@ -480,7 +480,8 @@ function openFullscreenGraph(key, title) {
         
         // Calculate how many points to show based on X zoom
         // graphZoomX of 1.0 = show all points, 0.5 = show half, 0.025 = show 2.5% (50 of 2000)
-        const pointsToShow = Math.max(5, Math.floor(allData.length * graphZoomX));
+        const targetPoints = Math.floor(2000 * graphZoomX); // Calculate based on max buffer size
+        const pointsToShow = Math.max(5, Math.min(targetPoints, allData.length)); // Cap at available data
         
         // Apply scroll offset (in seconds converted to data points)
         const updateIntervalSec = (currentSettings.updateInterval || 500) / 1000;
@@ -551,8 +552,8 @@ function openFullscreenGraph(key, title) {
             ctx.stroke();
             
             // Time labels (seconds ago, accounting for scroll offset)
-            const dataIndex = Math.floor((i / numTimeLabels) * (data.length - 1));
-            const pointsFromEnd = (endIndex - startIndex) - dataIndex;
+            const dataIndex = Math.floor((i / numTimeLabels) * (pointsToShow - 1));
+            const pointsFromEnd = pointsToShow - dataIndex;
             const secondsAgo = (pointsFromEnd * updateIntervalSec) + graphScrollOffset;
             ctx.fillStyle = '#2c3e50';
             ctx.font = '14px Segoe UI';
@@ -697,16 +698,16 @@ function handleTouchMove(e) {
         const canvasWidth = canvas.width - 160; // Account for padding
         
         // Convert pixel movement to time offset
-        // Positive deltaX = swipe right = go forward in time (decrease offset)
-        // Negative deltaX = swipe left = go back in time (increase offset)
+        // Positive deltaX = swipe right = go back in time (increase offset)
+        // Negative deltaX = swipe left = go forward in time (decrease offset)
         const updateIntervalSec = (currentSettings.updateInterval || 500) / 1000;
         const allData = graphData[currentGraphKey] || [];
         const pointsToShow = Math.max(5, Math.floor(allData.length * graphZoomX));
         const totalTimeShown = pointsToShow * updateIntervalSec;
         const timePerPixel = totalTimeShown / canvasWidth;
         
-        const deltaTime = deltaX * timePerPixel; // Swipe right = decrease offset (forward), left = increase (back)
-        const newOffset = Math.max(0, touchStartScrollOffset - deltaTime);
+        const deltaTime = -deltaX * timePerPixel; // Swipe right = increase offset (back in time)
+        const newOffset = Math.max(0, touchStartScrollOffset + deltaTime);
         
         // Limit scrolling to available data
         const maxOffset = (allData.length - pointsToShow) * updateIntervalSec;
