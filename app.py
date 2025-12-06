@@ -211,19 +211,48 @@ def generate_mock_data():
         if sensor['type'] == 'calculated':
             formula = sensor.get('config', {}).get('formula', '')
             try:
-                # Simple formula evaluation (can be extended)
+                # Simple formula evaluation with error handling
                 # Replace sensor IDs with their values
                 eval_formula = formula
-                for sid, val in sensor_values.items():
-                    eval_formula = eval_formula.replace(sid, str(val))
                 
-                # Safely evaluate simple math expressions
-                if all(c in '0123456789.+-*/() ' for c in eval_formula):
-                    value = eval(eval_formula)
-                    data[sensor['id']] = value
-                else:
+                # Check for circular references
+                if sensor['id'] in formula:
+                    print(f"Warning: Circular reference detected in sensor {sensor['id']}")
                     data[sensor['id']] = 0
-            except:
+                    continue
+                
+                # Replace sensor IDs with their values
+                for sid, val in sensor_values.items():
+                    # Use word boundaries to avoid partial replacements
+                    import re
+                    eval_formula = re.sub(r'\b' + re.escape(sid) + r'\b', str(val), eval_formula)
+                
+                # Replace ** with power operation (e.g., velocity**2)
+                eval_formula = eval_formula.replace('^', '**')
+                
+                # Validate the formula only contains safe characters
+                # Allow: numbers, operators, parentheses, spaces, decimal points, and **
+                if re.match(r'^[\d\s\.\+\-\*/\(\)\*]+$', eval_formula):
+                    # Safely evaluate
+                    result = eval(eval_formula)
+                    
+                    # Check for invalid results
+                    if result is None or (isinstance(result, float) and (result != result or abs(result) == float('inf'))):
+                        print(f"Warning: Invalid result for sensor {sensor['id']}: {result}")
+                        data[sensor['id']] = 0
+                    else:
+                        data[sensor['id']] = float(result)
+                else:
+                    print(f"Warning: Invalid formula for sensor {sensor['id']}: {formula}")
+                    data[sensor['id']] = 0
+            except ZeroDivisionError:
+                print(f"Warning: Division by zero in sensor {sensor['id']}")
+                data[sensor['id']] = 0
+            except (ValueError, SyntaxError, NameError) as e:
+                print(f"Warning: Error evaluating formula for sensor {sensor['id']}: {e}")
+                data[sensor['id']] = 0
+            except Exception as e:
+                print(f"Warning: Unexpected error for sensor {sensor['id']}: {e}")
                 data[sensor['id']] = 0
     
     return data

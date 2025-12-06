@@ -952,6 +952,7 @@
                 html += '<strong>Examples:</strong><br>';
                 html += '• <code>lift / drag</code> - Divide lift by drag<br>';
                 html += '• <code>velocity * 2</code> - Double the velocity<br>';
+                html += '• <code>velocity ** 2</code> or <code>velocity^2</code> - Square the velocity<br>';
                 html += '• <code>(lift + drag) / 2</code> - Average of two sensors';
                 html += '</div>';
                 html += '</div>';
@@ -991,6 +992,11 @@
 
         function updateSensor(index, field, value) {
             sensors[index][field] = value;
+            
+            // If ID changed, re-render to update available IDs for calculated sensors
+            if (field === 'id') {
+                renderSensorList();
+            }
         }
 
         function updateSensorConfig(index, field, value) {
@@ -1016,6 +1022,58 @@
         }
 
         async function saveSensorConfig() {
+            // Validate sensors before saving
+            const errors = [];
+            
+            // Check for duplicate IDs
+            const ids = sensors.map(s => s.id);
+            const duplicates = ids.filter((id, index) => ids.indexOf(id) !== index);
+            if (duplicates.length > 0) {
+                errors.push(`Duplicate sensor IDs found: ${duplicates.join(', ')}`);
+            }
+            
+            // Check for empty IDs
+            const emptyIds = sensors.filter(s => !s.id || s.id.trim() === '');
+            if (emptyIds.length > 0) {
+                errors.push('Some sensors have empty IDs');
+            }
+            
+            // Check for invalid ID characters
+            const invalidIds = sensors.filter(s => !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(s.id));
+            if (invalidIds.length > 0) {
+                errors.push(`Invalid sensor IDs (must start with letter/underscore, contain only letters/numbers/underscores): ${invalidIds.map(s => s.id).join(', ')}`);
+            }
+            
+            // Check calculated sensors for circular references
+            sensors.forEach((sensor, index) => {
+                if (sensor.type === 'calculated') {
+                    const formula = sensor.config?.formula || '';
+                    
+                    // Check if sensor references itself
+                    if (formula.includes(sensor.id)) {
+                        errors.push(`Sensor "${sensor.name}" (${sensor.id}) references itself in formula`);
+                    }
+                    
+                    // Check if formula references sensors that come after it
+                    for (let i = index + 1; i < sensors.length; i++) {
+                        if (formula.includes(sensors[i].id)) {
+                            errors.push(`Sensor "${sensor.name}" references sensor "${sensors[i].name}" which comes after it. Reorder sensors.`);
+                        }
+                    }
+                    
+                    // Check if formula is empty
+                    if (!formula || formula.trim() === '') {
+                        errors.push(`Calculated sensor "${sensor.name}" has no formula`);
+                    }
+                }
+            });
+            
+            // Show errors if any
+            if (errors.length > 0) {
+                showNotification('Validation Error', errors.join('<br>'), 'error');
+                return;
+            }
+            
             try {
                 // Update settings with new sensor configuration
                 const currentSettings = await fetch('/api/settings').then(r => r.json());
