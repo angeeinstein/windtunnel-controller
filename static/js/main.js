@@ -272,10 +272,11 @@ document.getElementById('resetBtn').addEventListener('click', () => {
 // Initial connection message
 console.log('Wind Tunnel Control System initialized');
 
-// Graph data storage (keep last 50 data points for sparklines)
+// Graph data storage (keep last 500 data points, display 50 by default in sparklines)
 const graphData = {};
 
-const MAX_GRAPH_POINTS = 50;
+const MAX_GRAPH_POINTS = 500;
+const DEFAULT_DISPLAY_POINTS = 50;
 
 // Add data point to graph
 function addGraphDataPoint(key, value) {
@@ -346,9 +347,11 @@ function updateAllSparklines() {
     sensors.forEach(sensor => {
         if (!sensor.enabled) return;
         const canvasId = 'sparkline-' + sensor.id;
-        const data = graphData[sensor.id];
+        const allData = graphData[sensor.id] || [];
+        // Only show last 50 points in sparkline
+        const displayData = allData.slice(-DEFAULT_DISPLAY_POINTS);
         const color = sensor.color || '#3498db';
-        drawSparkline(canvasId, data, color);
+        drawSparkline(canvasId, displayData, color);
     });
 }
 
