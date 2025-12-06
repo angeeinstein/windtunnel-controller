@@ -145,17 +145,7 @@ background_thread = None
 update_in_progress = False
 update_lock = Lock()
 
-# Simulated wind tunnel data (replace with actual sensor readings later)
-wind_tunnel_data = {
-    'velocity': 0.0,
-    'lift': 0.0,
-    'drag': 0.0,
-    'pressure': 101.325,
-    'temperature': 20.0,
-    'rpm': 0,
-    'power': 0.0,
-    'timestamp': time.time()
-}
+
 
 def generate_mock_data():
     """
@@ -929,6 +919,7 @@ def delete_log_file(filename):
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 # WebSocket events
+@socketio.on('connect')
 def handle_connect():
     """Handle client connection."""
     global background_thread
@@ -936,7 +927,7 @@ def handle_connect():
     with thread_lock:
         if background_thread is None:
             background_thread = socketio.start_background_task(background_data_updater)
-    emit('data_update', wind_tunnel_data)
+    emit('data_update', generate_mock_data())
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -946,7 +937,7 @@ def handle_disconnect():
 @socketio.on('request_data')
 def handle_data_request():
     """Handle explicit data requests from clients."""
-    emit('data_update', wind_tunnel_data)
+    emit('data_update', generate_mock_data())
 
 if __name__ == '__main__':
     # Run on all interfaces for Raspberry Pi access
