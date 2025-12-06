@@ -697,26 +697,26 @@ function handleTouchMove(e) {
     } else if (e.touches.length === 1 && isPanning) {
         e.preventDefault();
         
-        // Single touch - pan through time
+        // Single touch - pan through time like dragging the graph
         const deltaX = e.touches[0].clientX - touchStartX;
         const canvas = document.getElementById('fullscreenGraph');
         const canvasWidth = canvas.width - 160; // Account for padding
         
-        // Convert pixel movement to time offset
-        // Positive deltaX = swipe right = go back in time (increase offset)
-        // Negative deltaX = swipe left = go forward in time (decrease offset)
+        // Convert pixel movement to time offset with 1:1 sensitivity
+        // Swipe right (positive deltaX) = graph moves right = see older data (increase offset)
+        // Swipe left (negative deltaX) = graph moves left = see newer data (decrease offset)
         const updateIntervalSec = (currentSettings.updateInterval || 500) / 1000;
-        const allData = graphData[currentGraphKey] || [];
-        const pointsToShow = Math.max(5, Math.floor(allData.length * graphZoomX));
-        const totalTimeShown = pointsToShow * updateIntervalSec;
-        const timePerPixel = totalTimeShown / canvasWidth;
+        const timeWindowSeconds = graphZoomX * 1000; // Current time window
+        const timePerPixel = timeWindowSeconds / canvasWidth;
         
-        const deltaTime = -deltaX * timePerPixel; // Swipe right = increase offset (back in time)
+        const deltaTime = deltaX * timePerPixel; // Direct 1:1 mapping
         const newOffset = Math.max(0, touchStartScrollOffset + deltaTime);
         
         // Limit scrolling to available data
-        const maxOffset = (allData.length - pointsToShow) * updateIntervalSec;
-        graphScrollOffset = Math.min(newOffset, Math.max(0, maxOffset));
+        const allData = graphData[currentGraphKey] || [];
+        const targetPoints = Math.ceil(timeWindowSeconds / updateIntervalSec);
+        const maxOffset = Math.max(0, (allData.length - targetPoints) * updateIntervalSec);
+        graphScrollOffset = Math.min(newOffset, maxOffset);
     }
 }
 
