@@ -590,17 +590,6 @@
 
             <div class="setting-row">
                 <div>
-                    <div class="setting-label">Alert Threshold - High Velocity</div>
-                    <div class="setting-description">Alert when velocity exceeds (m/s)</div>
-                </div>
-                <div class="setting-control">
-                    <input type="number" class="setting-input" value="50" min="0" max="100" id="highVelocity">
-                    <span>m/s</span>
-                </div>
-            </div>
-
-            <div class="setting-row">
-                <div>
                     <div class="setting-label">System Name</div>
                     <div class="setting-description">Custom name for this wind tunnel</div>
                 </div>
@@ -762,7 +751,6 @@
                 velocityUnit: document.getElementById('velocityUnit').value,
                 temperatureUnit: document.getElementById('temperatureUnit').value,
                 dataLogging: document.getElementById('dataLogging').classList.contains('active'),
-                highVelocity: parseFloat(document.getElementById('highVelocity').value),
                 systemName: document.getElementById('systemName').value
             };
 
@@ -810,7 +798,6 @@
                         document.getElementById('decimalPlaces').value = settings.decimalPlaces;
                         document.getElementById('velocityUnit').value = settings.velocityUnit;
                         document.getElementById('temperatureUnit').value = settings.temperatureUnit;
-                        document.getElementById('highVelocity').value = settings.highVelocity;
                         document.getElementById('systemName').value = settings.systemName;
                         
                         // Set toggles based on reset settings
@@ -1242,7 +1229,6 @@
                     document.getElementById('decimalPlaces').value = settings.decimalPlaces || 2;
                     document.getElementById('velocityUnit').value = settings.velocityUnit || 'ms';
                     document.getElementById('temperatureUnit').value = settings.temperatureUnit || 'c';
-                    document.getElementById('highVelocity').value = settings.highVelocity || 50;
                     document.getElementById('systemName').value = settings.systemName || 'Wind Tunnel Alpha';
                     
                     if (settings.darkMode) document.getElementById('darkMode').classList.add('active');
@@ -1313,7 +1299,6 @@
                     document.getElementById('decimalPlaces').value = settings.decimalPlaces || 2;
                     document.getElementById('velocityUnit').value = settings.velocityUnit || 'ms';
                     document.getElementById('temperatureUnit').value = settings.temperatureUnit || 'c';
-                    document.getElementById('highVelocity').value = settings.highVelocity || 50;
                     document.getElementById('systemName').value = settings.systemName || 'Wind Tunnel Alpha';
                     
                     // Set toggles based on settings

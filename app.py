@@ -26,7 +26,6 @@ DEFAULT_SETTINGS = {
     'velocityUnit': 'ms',
     'temperatureUnit': 'c',
     'dataLogging': False,
-    'highVelocity': 50,
     'systemName': 'Wind Tunnel Alpha',
     'sensors': []
 }
@@ -345,8 +344,6 @@ def update_settings():
                 new_settings['updateInterval'] = max(100, min(5000, int(new_settings['updateInterval'])))
             if 'decimalPlaces' in new_settings:
                 new_settings['decimalPlaces'] = max(0, min(5, int(new_settings['decimalPlaces'])))
-            if 'highVelocity' in new_settings:
-                new_settings['highVelocity'] = max(0, min(200, float(new_settings['highVelocity'])))
             
             # Update current settings
             current_settings.update(new_settings)
