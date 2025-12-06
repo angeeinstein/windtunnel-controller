@@ -1069,6 +1069,9 @@ def handle_data_request():
     emit('data_update', generate_mock_data())
 
 if __name__ == '__main__':
+    # Initialize database on startup
+    init_database()
+    
     # Run on all interfaces for Raspberry Pi access
     # Use port 80 (standard HTTP port), disable debug in production
     # Note: On Linux/Raspberry Pi, running on port 80 requires sudo/root privileges
