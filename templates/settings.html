@@ -164,7 +164,7 @@
             position: fixed;
             top: 80px;
             right: 30px;
-            z-index: 2000;
+            z-index: 2100;
             display: flex;
             flex-direction: column;
             gap: 15px;
@@ -1075,6 +1075,12 @@
                     // Validate formula syntax - check for valid characters
                     if (!/^[a-zA-Z0-9_\s\.\+\-\*\/\(\)\^]+$/.test(formula)) {
                         errors.push(`Sensor "${sensor.name}" has invalid characters in formula. Use only: sensor IDs, numbers, operators (+, -, *, /, ^, **), parentheses`);
+                    }
+                    
+                    // Check for division by zero patterns
+                    // Match patterns like "/ 0", "/0", "/ 0.0", etc.
+                    if (/\/\s*0(\.0*)?\s*($|[^0-9\.])/g.test(formula + ' ') || /\/\s*0(\.0*)?$/g.test(formula)) {
+                        errors.push(`Sensor "${sensor.name}" contains division by zero in formula`);
                     }
                 }
             });
