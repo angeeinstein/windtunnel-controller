@@ -35,6 +35,8 @@ async function loadConfiguration() {
 function generateSensorCards() {
     const dataGrid = document.getElementById('dataGrid');
     dataGrid.innerHTML = '';
+    
+    // Initialize core UI elements
     elements = {
         timestamp: document.getElementById('timestamp'),
         statusDot: document.getElementById('statusDot'),
@@ -222,8 +224,12 @@ function updateDisplay(data) {
 socket.on('connect', () => {
     console.log('Connected to server');
     loadConfiguration(); // Load sensors on connect
-    elements.statusDot.classList.add('connected');
-    elements.statusText.textContent = 'Connected';
+    
+    // Update status indicators (use safe access)
+    const statusDot = document.getElementById('statusDot');
+    const statusText = document.getElementById('statusText');
+    if (statusDot) statusDot.classList.add('connected');
+    if (statusText) statusText.textContent = 'Connected';
     
     // Request initial data
     socket.emit('request_data');
@@ -231,13 +237,16 @@ socket.on('connect', () => {
 
 socket.on('disconnect', () => {
     console.log('Disconnected from server');
-    elements.statusDot.classList.remove('connected');
-    elements.statusText.textContent = 'Disconnected';
+    const statusDot = document.getElementById('statusDot');
+    const statusText = document.getElementById('statusText');
+    if (statusDot) statusDot.classList.remove('connected');
+    if (statusText) statusText.textContent = 'Disconnected';
 });
 
 socket.on('connect_error', (error) => {
     console.error('Connection error:', error);
-    elements.statusText.textContent = 'Connection Error';
+    const statusText = document.getElementById('statusText');
+    if (statusText) statusText.textContent = 'Connection Error';
 });
 
 // Data update handler

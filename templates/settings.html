@@ -875,7 +875,12 @@
                 sensorDiv.className = 'sensor-item';
                 sensorDiv.innerHTML = `
                     <div class="sensor-item-header">
-                        <h3 style="margin: 0; color: var(--primary-color);">Sensor ${index + 1}</h3>
+                        <h3 style="margin: 0; color: var(--primary-color);">
+                            Sensor ${index + 1}
+                            <span style="font-size: 0.8rem; color: var(--text-secondary); font-weight: normal; margin-left: 10px;">
+                                ID: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">${sensor.id}</code>
+                            </span>
+                        </h3>
                         <div class="sensor-item-controls">
                             ${index > 0 ? `<button class="sensor-item-btn" onclick="moveSensor(${index}, -1)">↑</button>` : ''}
                             ${index < sensors.length - 1 ? `<button class="sensor-item-btn" onclick="moveSensor(${index}, 1)">↓</button>` : ''}
@@ -923,7 +928,29 @@
                 return '';
             }
             
-            let html = '<div class="config-fields"><div class="sensor-fields">';
+            let html = '<div class="config-fields">';
+            
+            // For calculated type, show available sensor IDs
+            if (sensor.type === 'calculated') {
+                html += '<div style="background: #e8f5e9; padding: 12px; border-radius: 6px; margin-bottom: 10px; font-size: 0.9rem;">';
+                html += '<strong>Available sensor IDs for formulas:</strong><br>';
+                html += '<div style="margin-top: 8px; font-family: monospace; color: #2e7d32;">';
+                
+                const availableSensors = sensors.filter((s, i) => i < index && s.type !== 'calculated');
+                if (availableSensors.length > 0) {
+                    availableSensors.forEach(s => {
+                        html += `<span style="background: white; padding: 2px 6px; margin: 2px; display: inline-block; border-radius: 3px;">${s.id}</span> `;
+                    });
+                } else {
+                    html += '<em style="color: #666;">No sensors available yet. Add sensors above this one first.</em>';
+                }
+                
+                html += '</div>';
+                html += '<div style="margin-top: 8px; color: #555;">Example: <code>lift / drag</code> or <code>velocity * 2</code></div>';
+                html += '</div>';
+            }
+            
+            html += '<div class="sensor-fields">';
             type.fields.forEach(field => {
                 const value = sensor.config?.[field.name] || '';
                 html += `

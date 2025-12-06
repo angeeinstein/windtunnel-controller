@@ -52,7 +52,7 @@ SENSOR_TYPES = {
     'calculated': {
         'name': 'Calculated Value',
         'fields': [
-            {'name': 'formula', 'label': 'Formula', 'type': 'text', 'placeholder': 'e.g., lift/drag'}
+            {'name': 'formula', 'label': 'Formula (use sensor IDs)', 'type': 'text', 'placeholder': 'e.g., lift / drag'}
         ]
     },
     'gpio_analog': {
