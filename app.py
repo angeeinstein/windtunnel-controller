@@ -190,22 +190,30 @@ def generate_mock_data():
         sensor_type = sensor['type']
         
         if sensor_type == 'mock':
-            # Generate random mock data based on sensor ID
-            if sensor_id == 'velocity' or 'velocity' in sensor['name'].lower():
+            # Generate random mock data
+            # Try to generate sensible defaults based on sensor ID/name, otherwise random
+            sensor_lower = (sensor_id + sensor['name']).lower()
+            
+            if 'velocity' in sensor_lower or 'speed' in sensor_lower:
                 value = 15.5 + random.uniform(-2, 2)
-            elif sensor_id == 'lift' or 'lift' in sensor['name'].lower():
+            elif 'lift' in sensor_lower:
                 value = 125.3 + random.uniform(-10, 10)
-            elif sensor_id == 'drag' or 'drag' in sensor['name'].lower():
+            elif 'drag' in sensor_lower:
                 value = 45.2 + random.uniform(-5, 5)
-            elif sensor_id == 'pressure' or 'pressure' in sensor['name'].lower():
+            elif 'pressure' in sensor_lower:
                 value = 101.3 + random.uniform(-0.5, 0.5)
-            elif sensor_id == 'temperature' or 'temp' in sensor['name'].lower():
+            elif 'temperature' in sensor_lower or 'temp' in sensor_lower:
                 value = 22.5 + random.uniform(-1, 1)
-            elif sensor_id == 'rpm' or 'rpm' in sensor['name'].lower():
+            elif 'rpm' in sensor_lower or 'rotation' in sensor_lower:
                 value = 3500 + random.randint(-100, 100)
-            elif sensor_id == 'power' or 'power' in sensor['name'].lower():
+            elif 'power' in sensor_lower or 'watt' in sensor_lower:
                 value = 850 + random.uniform(-50, 50)
+            elif 'force' in sensor_lower:
+                value = 50.0 + random.uniform(-5, 5)
+            elif 'angle' in sensor_lower:
+                value = random.uniform(-45, 45)
             else:
+                # Generic mock data for unknown sensor types
                 value = random.uniform(0, 100)
             
             sensor_values[sensor_id] = value
@@ -214,10 +222,16 @@ def generate_mock_data():
         elif sensor_type == 'calculated':
             # Handle calculated values (will be computed after all sensors)
             pass
+        elif sensor_type in ['gpio_analog', 'i2c', 'spi', 'uart']:
+            # Real sensor reading - TO BE IMPLEMENTED
+            # For now, return 0 to distinguish from mock data
+            # TODO: Implement actual hardware sensor reading based on sensor_type and config
+            value = 0.0
+            sensor_values[sensor_id] = value
+            data[sensor_id] = value
         else:
-            # Real sensor reading (to be implemented)
-            # For now, generate mock data
-            value = random.uniform(0, 100)
+            # Unknown sensor type - return 0
+            value = 0.0
             sensor_values[sensor_id] = value
             data[sensor_id] = value
     
