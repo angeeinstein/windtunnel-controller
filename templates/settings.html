@@ -508,17 +508,6 @@
         <!-- Display Settings -->
         <div class="settings-section">
             <h2>Display Settings</h2>
-            
-            <div class="setting-row">
-                <div>
-                    <div class="setting-label">Update Interval</div>
-                    <div class="setting-description">How often data updates (milliseconds)</div>
-                </div>
-                <div class="setting-control">
-                    <input type="number" class="setting-input" value="500" min="100" max="5000" step="100" id="updateInterval">
-                    <span>ms</span>
-                </div>
-            </div>
 
             <div class="setting-row">
                 <div>
@@ -578,16 +567,6 @@
         <div class="settings-section">
             <h2>System Settings</h2>
             
-            <div class="setting-row">
-                <div>
-                    <div class="setting-label">Data Logging</div>
-                    <div class="setting-description">Enable automatic data logging to file</div>
-                </div>
-                <div class="setting-control">
-                    <div class="toggle-switch" id="dataLogging"></div>
-                </div>
-            </div>
-
             <div class="setting-row">
                 <div>
                     <div class="setting-label">System Name</div>
@@ -745,12 +724,10 @@
         // Save settings
         function saveSettings() {
             const settings = {
-                updateInterval: parseInt(document.getElementById('updateInterval').value),
                 darkMode: document.getElementById('darkMode').classList.contains('active'),
                 decimalPlaces: parseInt(document.getElementById('decimalPlaces').value),
                 velocityUnit: document.getElementById('velocityUnit').value,
                 temperatureUnit: document.getElementById('temperatureUnit').value,
-                dataLogging: document.getElementById('dataLogging').classList.contains('active'),
                 systemName: document.getElementById('systemName').value
             };
 
@@ -791,10 +768,8 @@
                         
                         // Clear all toggles first
                         document.getElementById('darkMode').classList.remove('active');
-                        document.getElementById('dataLogging').classList.remove('active');
                         
                         // Update form values with reset settings
-                        document.getElementById('updateInterval').value = settings.updateInterval;
                         document.getElementById('decimalPlaces').value = settings.decimalPlaces;
                         document.getElementById('velocityUnit').value = settings.velocityUnit;
                         document.getElementById('temperatureUnit').value = settings.temperatureUnit;
@@ -802,7 +777,6 @@
                         
                         // Set toggles based on reset settings
                         if (settings.darkMode) document.getElementById('darkMode').classList.add('active');
-                        if (settings.dataLogging) document.getElementById('dataLogging').classList.add('active');
                     } else {
                         showNotification('Error', data.message, 'error');
                     }
@@ -1254,14 +1228,12 @@
             fetch('/api/settings')
                 .then(response => response.json())
                 .then(settings => {
-                    document.getElementById('updateInterval').value = settings.updateInterval || 500;
                     document.getElementById('decimalPlaces').value = settings.decimalPlaces || 2;
                     document.getElementById('velocityUnit').value = settings.velocityUnit || 'ms';
                     document.getElementById('temperatureUnit').value = settings.temperatureUnit || 'c';
                     document.getElementById('systemName').value = settings.systemName || 'Wind Tunnel Alpha';
                     
                     if (settings.darkMode) document.getElementById('darkMode').classList.add('active');
-                    if (settings.dataLogging) document.getElementById('dataLogging').classList.add('active');
                 })
                 .catch(error => {
                     console.error('Failed to load settings:', error);
@@ -1321,10 +1293,8 @@
                     
                     // Clear all toggles first
                     document.getElementById('darkMode').classList.remove('active');
-                    document.getElementById('dataLogging').classList.remove('active');
                     
                     // Set form values
-                    document.getElementById('updateInterval').value = settings.updateInterval || 500;
                     document.getElementById('decimalPlaces').value = settings.decimalPlaces || 2;
                     document.getElementById('velocityUnit').value = settings.velocityUnit || 'ms';
                     document.getElementById('temperatureUnit').value = settings.temperatureUnit || 'c';
@@ -1332,7 +1302,6 @@
                     
                     // Set toggles based on settings
                     if (settings.darkMode) document.getElementById('darkMode').classList.add('active');
-                    if (settings.dataLogging) document.getElementById('dataLogging').classList.add('active');
                 })
                 .catch(error => {
                     console.error('Failed to load settings:', error);

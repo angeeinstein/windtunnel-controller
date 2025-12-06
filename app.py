@@ -6,8 +6,9 @@ import json
 import os
 import re
 import csv
+import sqlite3
 from datetime import datetime
-from threading import Lock
+from threading import Lock, Thread
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key-here'
@@ -16,35 +17,125 @@ app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0  # Disable caching in development
 # Settings file path
 SETTINGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'settings.json')
 
-# Data logging directory
-DATA_LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data_logs')
-if not os.path.exists(DATA_LOG_DIR):
-    os.makedirs(DATA_LOG_DIR)
+# Database configuration
+DB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sensor_data.db')
+DATA_RETENTION_HOURS = 24  # Keep last 24 hours of data
+UPDATE_INTERVAL_MS = 500  # Fixed at 500ms (2Hz) for consistency
 
-# Log management configuration
-MAX_LOG_FILE_SIZE_MB = 50  # Rotate log file when it exceeds 50MB
-MAX_LOG_FILES = 100  # Keep maximum 100 log files (oldest deleted automatically)
-MAX_TOTAL_LOG_SIZE_MB = 2000  # Maximum total size of all logs (2GB)
+# Data logging directory (for CSV exports) - DISABLED, using database only
+# DATA_LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data_logs')
+# if not os.path.exists(DATA_LOG_DIR):
+#     os.makedirs(DATA_LOG_DIR)
 
-# Historical data buffer configuration
-# Keep last 6 hours of data in memory for analysis (at 500ms intervals = 43,200 points)
-# Since running on localhost (Raspberry Pi), network bandwidth is not a concern
-MAX_HISTORICAL_POINTS = 43200  # 6 hours at 500ms intervals (~5-10MB RAM)
-historical_data_buffer = []  # List of {timestamp, data_dict} entries
+# Log management configuration - DISABLED
+# MAX_LOG_FILE_SIZE_MB = 50
+# MAX_LOG_FILES = 100
+# MAX_TOTAL_LOG_SIZE_MB = 2000
 
-# Current log file (set when logging starts)
-current_log_file = None
-log_session_start = None
-log_rows_written = 0
+# Current log file (set when logging starts) - DISABLED
+# current_log_file = None
+# log_session_start = None
+# log_rows_written = 0
+
+# Database connection and lock
+db_lock = Lock()
+db_write_queue = []  # Buffer for batch writes
+
+def init_database():
+    """Initialize SQLite database with sensor data table and indexes."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    # Create table with composite primary key (timestamp, sensor_id)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS sensor_data (
+            timestamp REAL NOT NULL,
+            sensor_id TEXT NOT NULL,
+            value REAL NOT NULL,
+            PRIMARY KEY (timestamp, sensor_id)
+        )
+    ''')
+    
+    # Create indexes for fast time-range queries
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_timestamp 
+        ON sensor_data(timestamp)
+    ''')
+    
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_sensor_time 
+        ON sensor_data(sensor_id, timestamp)
+    ''')
+    
+    conn.commit()
+    conn.close()
+    print(f"Database initialized: {DB_FILE}")
+
+def write_sensor_data_to_db(timestamp, sensor_data):
+    """
+    Write sensor data to database.
+    Adds to write queue for batch processing.
+    """
+    with db_lock:
+        for sensor_id, value in sensor_data.items():
+            if sensor_id != 'timestamp':  # Skip timestamp field
+                db_write_queue.append((timestamp, sensor_id, value))
+
+def flush_db_write_queue():
+    """
+    Flush queued writes to database in a single transaction.
+    Called periodically from background thread.
+    """
+    global db_write_queue
+    
+    with db_lock:
+        if not db_write_queue:
+            return
+        
+        queue_copy = db_write_queue[:]
+        db_write_queue = []
+    
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.executemany(
+            'INSERT OR REPLACE INTO sensor_data (timestamp, sensor_id, value) VALUES (?, ?, ?)',
+            queue_copy
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Error writing to database: {e}")
+        # Re-queue failed writes
+        with db_lock:
+            db_write_queue.extend(queue_copy)
+
+def cleanup_old_data():
+    """Remove sensor data older than DATA_RETENTION_HOURS."""
+    cutoff_time = time.time() - (DATA_RETENTION_HOURS * 3600)
+    
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM sensor_data WHERE timestamp < ?', (cutoff_time,))
+        deleted_rows = cursor.rowcount
+        conn.commit()
+        conn.close()
+        if deleted_rows > 0:
+            print(f"Cleaned up {deleted_rows} old sensor data rows")
+    except Exception as e:
+        print(f"Error cleaning up database: {e}")
+
+# Initialize database on startup
+init_database()
 
 # Default settings
 DEFAULT_SETTINGS = {
-    'updateInterval': 500,
+    'updateInterval': UPDATE_INTERVAL_MS,  # Fixed at 500ms
     'darkMode': False,
     'decimalPlaces': 2,
     'velocityUnit': 'ms',
     'temperatureUnit': 'c',
-    'dataLogging': False,
     'systemName': 'Wind Tunnel Alpha',
     'sensors': []
 }
@@ -324,187 +415,193 @@ def get_directory_size_mb(directory):
                 total_size += os.path.getsize(filepath)
     return total_size / (1024 * 1024)
 
-def cleanup_old_logs():
-    """
-    Remove old log files to prevent disk space issues.
-    Deletes oldest files first when limits are exceeded.
-    """
-    try:
-        if not os.path.exists(DATA_LOG_DIR):
-            return
-        
-        # Get all log files with their modification times
-        log_files = []
-        for filename in os.listdir(DATA_LOG_DIR):
-            if filename.endswith('.csv'):
-                filepath = os.path.join(DATA_LOG_DIR, filename)
-                if filepath != current_log_file:  # Don't delete current log
-                    log_files.append({
-                        'path': filepath,
-                        'size': os.path.getsize(filepath),
-                        'mtime': os.path.getmtime(filepath)
-                    })
-        
-        # Sort by modification time (oldest first)
-        log_files.sort(key=lambda x: x['mtime'])
-        
-        # Check if we exceed file count limit
-        while len(log_files) >= MAX_LOG_FILES:
-            oldest = log_files.pop(0)
-            print(f"Deleting old log file (file count limit): {os.path.basename(oldest['path'])}")
-            os.remove(oldest['path'])
-        
-        # Check if we exceed total size limit
-        total_size_mb = sum(f['size'] for f in log_files) / (1024 * 1024)
-        if current_log_file:
-            total_size_mb += os.path.getsize(current_log_file) / (1024 * 1024)
-        
-        while total_size_mb > MAX_TOTAL_LOG_SIZE_MB and log_files:
-            oldest = log_files.pop(0)
-            file_size_mb = oldest['size'] / (1024 * 1024)
-            print(f"Deleting old log file (size limit): {os.path.basename(oldest['path'])} ({file_size_mb:.2f} MB)")
-            os.remove(oldest['path'])
-            total_size_mb -= file_size_mb
-        
-        print(f"Log cleanup complete. Total log size: {total_size_mb:.2f} MB, File count: {len(log_files) + (1 if current_log_file else 0)}")
-    
-    except Exception as e:
-        print(f"Error during log cleanup: {e}")
+# CSV LOGGING FUNCTIONS - DISABLED (using SQLite database instead)
+# def cleanup_old_logs():
+#     """
+#     Remove old log files to prevent disk space issues.
+#     Deletes oldest files first when limits are exceeded.
+#     """
+#     try:
+#         if not os.path.exists(DATA_LOG_DIR):
+#             return
+#         
+#         # Get all log files with their modification times
+#         log_files = []
+#         for filename in os.listdir(DATA_LOG_DIR):
+#             if filename.endswith('.csv'):
+#                 filepath = os.path.join(DATA_LOG_DIR, filename)
+#                 if filepath != current_log_file:  # Don't delete current log
+#                     log_files.append({
+#                         'path': filepath,
+#                         'size': os.path.getsize(filepath),
+#                         'mtime': os.path.getmtime(filepath)
+#                     })
+#         
+#         # Sort by modification time (oldest first)
+#         log_files.sort(key=lambda x: x['mtime'])
+#         
+#         # Check if we exceed file count limit
+#         while len(log_files) >= MAX_LOG_FILES:
+#             oldest = log_files.pop(0)
+#             print(f"Deleting old log file (file count limit): {os.path.basename(oldest['path'])}")
+#             os.remove(oldest['path'])
+#         
+#         # Check if we exceed total size limit
+#         total_size_mb = sum(f['size'] for f in log_files) / (1024 * 1024)
+#         if current_log_file:
+#             total_size_mb += os.path.getsize(current_log_file) / (1024 * 1024)
+#         
+#         while total_size_mb > MAX_TOTAL_LOG_SIZE_MB and log_files:
+#             oldest = log_files.pop(0)
+#             file_size_mb = oldest['size'] / (1024 * 1024)
+#             print(f"Deleting old log file (size limit): {os.path.basename(oldest['path'])} ({file_size_mb:.2f} MB)")
+#             os.remove(oldest['path'])
+#             total_size_mb -= file_size_mb
+#         
+#         print(f"Log cleanup complete. Total log size: {total_size_mb:.2f} MB, File count: {len(log_files) + (1 if current_log_file else 0)}")
+#     
+#     except Exception as e:
+#         print(f"Error during log cleanup: {e}")
 
-def rotate_log_file():
-    """
-    Rotate to a new log file.
-    Called when current file exceeds size limit.
-    """
-    global current_log_file, log_session_start, log_rows_written
-    
-    print(f"Rotating log file (size limit reached)...")
-    
-    # Close current log (already closed in append mode)
-    old_file = current_log_file
-    
-    # Create new log file
-    log_session_start = datetime.now()
-    filename = f"windtunnel_{log_session_start.strftime('%Y%m%d_%H%M%S')}.csv"
-    current_log_file = os.path.join(DATA_LOG_DIR, filename)
-    log_rows_written = 0
-    
-    # Write header
-    sensors = current_settings.get('sensors', [])
-    if not sensors or len(sensors) == 0:
-        sensors = DEFAULT_SENSORS
-    headers = ['timestamp', 'datetime'] + [s['id'] for s in sensors if s.get('enabled', True)]
-    
-    with open(current_log_file, 'w', newline='') as f:
-        writer = csv.writer(f)
-        writer.writerow(headers)
-    
-    print(f"Rotated to new log file: {current_log_file}")
-    
-    # Cleanup old logs
-    cleanup_old_logs()
+# def rotate_log_file():
+#     """
+#     Rotate to a new log file.
+#     Called when current file exceeds size limit.
+#     """
+#     global current_log_file, log_session_start, log_rows_written
+#     
+#     print(f"Rotating log file (size limit reached)...")
+#     
+#     # Close current log (already closed in append mode)
+#     old_file = current_log_file
+#     
+#     # Create new log file
+#     log_session_start = datetime.now()
+#     filename = f"windtunnel_{log_session_start.strftime('%Y%m%d_%H%M%S')}.csv"
+#     current_log_file = os.path.join(DATA_LOG_DIR, filename)
+#     log_rows_written = 0
+#     
+#     # Write header
+#     sensors = current_settings.get('sensors', [])
+#     if not sensors or len(sensors) == 0:
+#         sensors = DEFAULT_SENSORS
+#     headers = ['timestamp', 'datetime'] + [s['id'] for s in sensors if s.get('enabled', True)]
+#     
+#     with open(current_log_file, 'w', newline='') as f:
+#         writer = csv.writer(f)
+#         writer.writerow(headers)
+#     
+#     print(f"Rotated to new log file: {current_log_file}")
+#     
+#     # Cleanup old logs
+#     cleanup_old_logs()
 
-def log_data_to_csv(data):
-    """
-    Log data to CSV file if logging is enabled.
-    Automatically rotates files when size limit is reached.
-    All data logged in SI units.
-    """
-    global current_log_file, log_session_start, log_rows_written
-    
-    if not current_settings.get('dataLogging', False):
-        return
-    
-    # Create new log file if needed
-    if current_log_file is None:
-        log_session_start = datetime.now()
-        filename = f"windtunnel_{log_session_start.strftime('%Y%m%d_%H%M%S')}.csv"
-        current_log_file = os.path.join(DATA_LOG_DIR, filename)
-        log_rows_written = 0
-        
-        # Write header
-        sensors = current_settings.get('sensors', [])
-        if not sensors or len(sensors) == 0:
-            sensors = DEFAULT_SENSORS
-        headers = ['timestamp', 'datetime'] + [s['id'] for s in sensors if s.get('enabled', True)]
-        
-        with open(current_log_file, 'w', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(headers)
-        
-        print(f"Started logging to {current_log_file}")
-        
-        # Run cleanup on startup
-        cleanup_old_logs()
-    
-    # Check if file size exceeds limit (check every 100 rows for performance)
-    if log_rows_written % 100 == 0 and os.path.exists(current_log_file):
-        file_size_mb = os.path.getsize(current_log_file) / (1024 * 1024)
-        if file_size_mb > MAX_LOG_FILE_SIZE_MB:
-            rotate_log_file()
-    
-    # Append data
-    try:
-        sensors = current_settings.get('sensors', [])
-        if not sensors or len(sensors) == 0:
-            sensors = DEFAULT_SENSORS
-        enabled_sensor_ids = [s['id'] for s in sensors if s.get('enabled', True)]
-        
-        row = [
-            data.get('timestamp', time.time()),
-            datetime.fromtimestamp(data.get('timestamp', time.time())).isoformat()
-        ]
-        row.extend([data.get(sid, '') for sid in enabled_sensor_ids])
-        
-        with open(current_log_file, 'a', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(row)
-        
-        log_rows_written += 1
-    except Exception as e:
-        print(f"Error logging data: {e}")
+# def log_data_to_csv(data):
+#     """
+#     Log data to CSV file if logging is enabled.
+#     Automatically rotates files when size limit is reached.
+#     All data logged in SI units.
+#     """
+#     global current_log_file, log_session_start, log_rows_written
+#     
+#     if not current_settings.get('dataLogging', False):
+#         return
+#     
+#     # Create new log file if needed
+#     if current_log_file is None:
+#         log_session_start = datetime.now()
+#         filename = f"windtunnel_{log_session_start.strftime('%Y%m%d_%H%M%S')}.csv"
+#         current_log_file = os.path.join(DATA_LOG_DIR, filename)
+#         log_rows_written = 0
+#         
+#         # Write header
+#         sensors = current_settings.get('sensors', [])
+#         if not sensors or len(sensors) == 0:
+#             sensors = DEFAULT_SENSORS
+#         headers = ['timestamp', 'datetime'] + [s['id'] for s in sensors if s.get('enabled', True)]
+#         
+#         with open(current_log_file, 'w', newline='') as f:
+#             writer = csv.writer(f)
+#             writer.writerow(headers)
+#         
+#         print(f"Started logging to {current_log_file}")
+#         
+#         # Run cleanup on startup
+#         cleanup_old_logs()
+#     
+#     # Check if file size exceeds limit (check every 100 rows for performance)
+#     if log_rows_written % 100 == 0 and os.path.exists(current_log_file):
+#         file_size_mb = os.path.getsize(current_log_file) / (1024 * 1024)
+#         if file_size_mb > MAX_LOG_FILE_SIZE_MB:
+#             rotate_log_file()
+#     
+#     # Append data
+#     try:
+#         sensors = current_settings.get('sensors', [])
+#         if not sensors or len(sensors) == 0:
+#             sensors = DEFAULT_SENSORS
+#         enabled_sensor_ids = [s['id'] for s in sensors if s.get('enabled', True)]
+#         
+#         row = [
+#             data.get('timestamp', time.time()),
+#             datetime.fromtimestamp(data.get('timestamp', time.time())).isoformat()
+#         ]
+#         row.extend([data.get(sid, '') for sid in enabled_sensor_ids])
+#         
+#         with open(current_log_file, 'a', newline='') as f:
+#             writer = csv.writer(f)
+#             writer.writerow(row)
+#         
+#         log_rows_written += 1
+#     except Exception as e:
+#         print(f"Error logging data: {e}")
 
-def stop_logging():
-    """Stop current logging session."""
-    global current_log_file, log_session_start, log_rows_written
-    if current_log_file:
-        print(f"Stopped logging to {current_log_file} ({log_rows_written} rows written)")
-    current_log_file = None
-    log_session_start = None
-    log_rows_written = 0
+# def stop_logging():
+#     """Stop current logging session."""
+#     global current_log_file, log_session_start, log_rows_written
+#     if current_log_file:
+#         print(f"Stopped logging to {current_log_file} ({log_rows_written} rows written)")
+#     current_log_file = None
+#     log_session_start = None
+#     log_rows_written = 0
+# END CSV LOGGING FUNCTIONS
 
 def background_data_updater():
     """
     Background thread to send data updates to all connected clients.
-    Uses configurable update interval from settings.
+    Fixed at 500ms (2Hz) intervals for database consistency.
     All data transmitted in SI units.
     """
-    global current_log_file, historical_data_buffer
+    global current_log_file
+    
+    last_db_flush = time.time()
+    last_cleanup = time.time()
+    DB_FLUSH_INTERVAL = 10  # Flush database writes every 10 seconds
+    CLEANUP_INTERVAL = 3600  # Cleanup old data every hour
     
     while True:
         data = generate_mock_data()
+        timestamp = data.get('timestamp', time.time())
+        
+        # Send to connected clients via WebSocket
         socketio.emit('data_update', data)
         
-        # Store in historical buffer for time-based scrolling
-        historical_data_buffer.append({
-            'timestamp': data.get('timestamp', time.time()),
-            'data': data.copy()
-        })
+        # Write to database (queued for batch processing)
+        write_sensor_data_to_db(timestamp, data)
         
-        # Keep buffer size limited (rolling window)
-        if len(historical_data_buffer) > MAX_HISTORICAL_POINTS:
-            historical_data_buffer.pop(0)
+        # Periodically flush database writes
+        current_time = time.time()
+        if current_time - last_db_flush >= DB_FLUSH_INTERVAL:
+            flush_db_write_queue()
+            last_db_flush = current_time
         
-        # Log data if enabled
-        if current_settings.get('dataLogging', False):
-            log_data_to_csv(data)
-        else:
-            # Stop logging if it was previously enabled
-            if current_log_file is not None:
-                stop_logging()
+        # Periodically cleanup old data
+        if current_time - last_cleanup >= CLEANUP_INTERVAL:
+            cleanup_old_data()
+            last_cleanup = current_time
         
-        # Use configurable update interval (convert ms to seconds)
-        time.sleep(current_settings.get('updateInterval', 500) / 1000)
+        # Fixed update interval (500ms = 2Hz)
+        time.sleep(UPDATE_INTERVAL_MS / 1000)
 
 @app.route('/')
 def index():
@@ -535,12 +632,12 @@ def get_sensors():
 @app.route('/api/historical-data', methods=['GET'])
 def get_historical_data():
     """
-    Get historical data for time-based analysis.
+    Get historical sensor data from database.
     Query parameters:
     - sensor: sensor ID to retrieve (required)
-    - start_time: Unix timestamp for start (optional, default: beginning of buffer)
+    - start_time: Unix timestamp for start (optional, default: 24 hours ago)
     - end_time: Unix timestamp for end (optional, default: now)
-    - max_points: Maximum number of points to return (optional, default: all in range)
+    - max_points: Maximum number of points to return (optional, default: 100000)
     """
     from flask import request
     
@@ -549,36 +646,48 @@ def get_historical_data():
         if not sensor_id:
             return jsonify({'status': 'error', 'message': 'sensor parameter required'}), 400
         
-        start_time = float(request.args.get('start_time', 0))
-        end_time = float(request.args.get('end_time', time.time() + 1000))
-        max_points = int(request.args.get('max_points', 10000))  # Localhost: allow up to 10k points
+        # Default to last 24 hours if not specified
+        end_time = float(request.args.get('end_time', time.time()))
+        start_time = float(request.args.get('start_time', end_time - 86400))
+        max_points = int(request.args.get('max_points', 100000))
         
-        # Filter data by time range
-        filtered_data = []
-        for entry in historical_data_buffer:
-            ts = entry['timestamp']
-            if start_time <= ts <= end_time:
-                value = entry['data'].get(sensor_id)
-                if value is not None:
-                    filtered_data.append({
-                        'timestamp': ts,
-                        'value': value
-                    })
+        # Query database
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT timestamp, value 
+            FROM sensor_data 
+            WHERE sensor_id = ? AND timestamp BETWEEN ? AND ?
+            ORDER BY timestamp ASC
+        ''', (sensor_id, start_time, end_time))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        # Convert to list of dicts
+        data = [{'timestamp': row[0], 'value': row[1]} for row in rows]
         
         # Downsample if too many points
-        if len(filtered_data) > max_points:
-            # Simple decimation - take every nth point
-            step = len(filtered_data) // max_points
-            filtered_data = filtered_data[::step]
+        if len(data) > max_points:
+            step = len(data) // max_points
+            data = data[::step]
+        
+        # Get buffer info
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute('SELECT MIN(timestamp), MAX(timestamp), COUNT(*) FROM sensor_data WHERE sensor_id = ?', (sensor_id,))
+        buffer_info = cursor.fetchone()
+        conn.close()
         
         return jsonify({
             'status': 'success',
             'sensor': sensor_id,
-            'data': filtered_data,
-            'buffer_start': historical_data_buffer[0]['timestamp'] if historical_data_buffer else None,
-            'buffer_end': historical_data_buffer[-1]['timestamp'] if historical_data_buffer else None,
-            'buffer_size': len(historical_data_buffer),
-            'max_buffer_size': MAX_HISTORICAL_POINTS
+            'data': data,
+            'buffer_start': buffer_info[0] if buffer_info[0] else None,
+            'buffer_end': buffer_info[1] if buffer_info[1] else None,
+            'total_points': buffer_info[2] if buffer_info[2] else 0,
+            'returned_points': len(data)
         })
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -599,9 +708,10 @@ def update_settings():
         
         # Validate and update settings
         if new_settings:
+            # Ensure updateInterval is always 500ms (ignore any client changes)
+            new_settings['updateInterval'] = UPDATE_INTERVAL_MS
+            
             # Validate numeric fields
-            if 'updateInterval' in new_settings:
-                new_settings['updateInterval'] = max(100, min(5000, int(new_settings['updateInterval'])))
             if 'decimalPlaces' in new_settings:
                 new_settings['decimalPlaces'] = max(0, min(5, int(new_settings['decimalPlaces'])))
             
@@ -853,87 +963,89 @@ def get_version():
 @app.route('/api/data')
 def get_data():
     """REST API endpoint to get current wind tunnel data."""
-    return jsonify(wind_tunnel_data)
+    return jsonify(generate_mock_data())
 
-@app.route('/api/logs', methods=['GET'])
-def get_log_files():
-    """Get list of available log files."""
-    try:
-        log_files = []
-        if os.path.exists(DATA_LOG_DIR):
-            for filename in os.listdir(DATA_LOG_DIR):
-                if filename.endswith('.csv'):
-                    filepath = os.path.join(DATA_LOG_DIR, filename)
-                    file_size = os.path.getsize(filepath)
-                    file_time = os.path.getmtime(filepath)
-                    
-                    # Count rows
-                    try:
-                        with open(filepath, 'r') as f:
-                            row_count = sum(1 for _ in f) - 1  # Subtract header
-                    except:
-                        row_count = 0
-                    
-                    log_files.append({
-                        'filename': filename,
-                        'size': file_size,
-                        'size_mb': round(file_size / 1024 / 1024, 2),
-                        'modified': datetime.fromtimestamp(file_time).isoformat(),
-                        'rows': row_count,
-                        'is_current': filepath == current_log_file
-                    })
-        
-        # Sort by modified time, newest first
-        log_files.sort(key=lambda x: x['modified'], reverse=True)
-        
-        return jsonify({
-            'status': 'success',
-            'files': log_files,
-            'logging_active': current_settings.get('dataLogging', False),
-            'current_file': os.path.basename(current_log_file) if current_log_file else None
-        })
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+# CSV LOG FILE ENDPOINTS - DISABLED (using SQLite database instead)
+# @app.route('/api/logs', methods=['GET'])
+# def get_log_files():
+#     """Get list of available log files."""
+#     try:
+#         log_files = []
+#         if os.path.exists(DATA_LOG_DIR):
+#             for filename in os.listdir(DATA_LOG_DIR):
+#                 if filename.endswith('.csv'):
+#                     filepath = os.path.join(DATA_LOG_DIR, filename)
+#                     file_size = os.path.getsize(filepath)
+#                     file_time = os.path.getmtime(filepath)
+#                     
+#                     # Count rows
+#                     try:
+#                         with open(filepath, 'r') as f:
+#                             row_count = sum(1 for _ in f) - 1  # Subtract header
+#                     except:
+#                         row_count = 0
+#                     
+#                     log_files.append({
+#                         'filename': filename,
+#                         'size': file_size,
+#                         'size_mb': round(file_size / 1024 / 1024, 2),
+#                         'modified': datetime.fromtimestamp(file_time).isoformat(),
+#                         'rows': row_count,
+#                         'is_current': filepath == current_log_file
+#                     })
+#         
+#         # Sort by modified time, newest first
+#         log_files.sort(key=lambda x: x['modified'], reverse=True)
+#         
+#         return jsonify({
+#             'status': 'success',
+#             'files': log_files,
+#             'logging_active': current_settings.get('dataLogging', False),
+#             'current_file': os.path.basename(current_log_file) if current_log_file else None
+#         })
+#     except Exception as e:
+#         return jsonify({'status': 'error', 'message': str(e)}), 500
 
-@app.route('/api/logs/<filename>', methods=['GET'])
-def download_log_file(filename):
-    """Download a specific log file."""
-    from flask import send_file
-    try:
-        # Security: ensure filename doesn't contain path traversal
-        if '..' in filename or '/' in filename or '\\' in filename:
-            return jsonify({'status': 'error', 'message': 'Invalid filename'}), 400
-        
-        filepath = os.path.join(DATA_LOG_DIR, filename)
-        
-        if not os.path.exists(filepath):
-            return jsonify({'status': 'error', 'message': 'File not found'}), 404
-        
-        return send_file(filepath, as_attachment=True, download_name=filename)
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+# @app.route('/api/logs/<filename>', methods=['GET'])
+# def download_log_file(filename):
+#     """Download a specific log file."""
+#     from flask import send_file
+#     try:
+#         # Security: ensure filename doesn't contain path traversal
+#         if '..' in filename or '/' in filename or '\\' in filename:
+#             return jsonify({'status': 'error', 'message': 'Invalid filename'}), 400
+#         
+#         filepath = os.path.join(DATA_LOG_DIR, filename)
+#         
+#         if not os.path.exists(filepath):
+#             return jsonify({'status': 'error', 'message': 'File not found'}), 404
+#         
+#         return send_file(filepath, as_attachment=True, download_name=filename)
+#     except Exception as e:
+#         return jsonify({'status': 'error', 'message': str(e)}), 500
 
-@app.route('/api/logs/<filename>', methods=['DELETE'])
-def delete_log_file(filename):
-    """Delete a specific log file."""
-    try:
-        # Security: ensure filename doesn't contain path traversal
-        if '..' in filename or '/' in filename or '\\' in filename:
-            return jsonify({'status': 'error', 'message': 'Invalid filename'}), 400
-        
-        filepath = os.path.join(DATA_LOG_DIR, filename)
-        
-        # Don't allow deleting current log file
-        if filepath == current_log_file:
-            return jsonify({'status': 'error', 'message': 'Cannot delete active log file'}), 400
-        
-        if not os.path.exists(filepath):
-            return jsonify({'status': 'error', 'message': 'File not found'}), 404
-        
-        os.remove(filepath)
-        return jsonify({'status': 'success', 'message': f'Deleted {filename}'})
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+# @app.route('/api/logs/<filename>', methods=['DELETE'])
+# def delete_log_file(filename):
+#     """Delete a specific log file."""
+#     try:
+#         # Security: ensure filename doesn't contain path traversal
+#         if '..' in filename or '/' in filename or '\\' in filename:
+#             return jsonify({'status': 'error', 'message': 'Invalid filename'}), 400
+#         
+#         filepath = os.path.join(DATA_LOG_DIR, filename)
+#         
+#         # Don't allow deleting current log file
+#         if filepath == current_log_file:
+#             return jsonify({'status': 'error', 'message': 'Cannot delete active log file'}), 400
+#         
+#         if not os.path.exists(filepath):
+#             return jsonify({'status': 'error', 'message': 'File not found'}), 404
+#         
+#         os.remove(filepath)
+#         return jsonify({'status': 'success', 'message': f'Deleted {filename}'})
+#     except Exception as e:
+#         return jsonify({'status': 'error', 'message': str(e)}), 500
+# END CSV LOG FILE ENDPOINTS
 
 # WebSocket events
 @socketio.on('connect')

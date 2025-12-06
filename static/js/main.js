@@ -194,12 +194,11 @@ function updateDisplay(data) {
         // Update display
         elements[sensor.id].textContent = formatNumber(value, decimals);
         
-        // Add data points to graphs
-        addGraphDataPoint(sensor.id, value);
+        // Note: Graph data is now fetched from API when graphs are opened
+        // Real-time sparklines removed for now - can add back with live buffer if needed
     });
     
-    // Update sparklines
-    updateAllSparklines();
+    // Sparklines removed - data is fetched on-demand from server
     
     // Add brief highlight animation to updated values
     Object.values(elements).forEach(el => {
@@ -272,23 +271,10 @@ document.getElementById('resetBtn').addEventListener('click', () => {
 // Initial connection message
 console.log('Wind Tunnel Control System initialized');
 
-// Graph data storage (keep last 2000 data points for local analysis, display 50 by default in sparklines)
-// Since running on localhost (Raspberry Pi), memory is not a concern
-const graphData = {};
-
-const MAX_GRAPH_POINTS = 2000;  // ~3-4 minutes at 500ms intervals
-const DEFAULT_DISPLAY_POINTS = 50;
-
-// Add data point to graph
-function addGraphDataPoint(key, value) {
-    if (!graphData[key]) {
-        graphData[key] = [];
-    }
-    graphData[key].push(value);
-    if (graphData[key].length > MAX_GRAPH_POINTS) {
-        graphData[key].shift();
-    }
-}
+// Graph data cache - stores fetched data from server API
+// Data is lazy-loaded and cached when viewing graphs
+const graphDataCache = {}; // {sensorId: [{timestamp, value}, ...]}
+const UPDATE_INTERVAL_MS = 500; // Fixed at 500ms (2Hz)
 
 // Draw sparkline
 function drawSparkline(canvasId, data, color = '#3498db') {
@@ -416,40 +402,51 @@ function updateZoomDisplay() {
 }
 
 // Load historical data from server
-async function loadHistoricalData(sensorId) {
-    if (isLoadingHistorical) return;
+async function loadHistoricalData(sensorId, startTime = null, endTime = null) {
+    if (isLoadingHistorical) return null;
     
     isLoadingHistorical = true;
     try {
-        // Request up to 10,000 points (localhost has no bandwidth concerns)
-        const response = await fetch(`/api/historical-data?sensor=${sensorId}&max_points=10000`);
+        // Default to last 30 minutes if not specified
+        if (!endTime) endTime = Date.now() / 1000;
+        if (!startTime) startTime = endTime - 1800; // 30 minutes
+        
+        const response = await fetch(
+            `/api/historical-data?sensor=${sensorId}&start_time=${startTime}&end_time=${endTime}&max_points=100000`
+        );
         const result = await response.json();
         
         if (result.status === 'success') {
-            historicalData = result;
-            console.log(`Loaded ${result.data.length} historical points for ${sensorId} (${(result.buffer_size * (currentSettings.updateInterval || 500) / 1000 / 60).toFixed(1)} minutes available)`);
+            console.log(`Loaded ${result.data.length} points for ${sensorId} (${((endTime - startTime) / 60).toFixed(1)} minutes)`);
+            return result.data; // [{timestamp, value}, ...]
         }
     } catch (error) {
         console.error('Failed to load historical data:', error);
     } finally {
         isLoadingHistorical = false;
     }
+    return null;
 }
 
 // Open fullscreen graph
-function openFullscreenGraph(key, title) {
+async function openFullscreenGraph(key, title) {
     currentGraphKey = key;
     graphZoomX = 0.01; // Show 10 seconds by default
     graphZoomY = 1.0;
     graphScrollOffset = 0;
     graphStartTime = Date.now();
-    historicalData = null;
     document.getElementById('graphModalTitle').textContent = title;
     document.getElementById('graphModal').style.display = 'flex';
     updateZoomDisplay();
     
-    // Load historical data from server
-    loadHistoricalData(key);
+    // Load initial 30 minutes of data from server
+    const now = Date.now() / 1000;
+    const data = await loadHistoricalData(key, now - 1800, now);
+    if (data) {
+        graphDataCache[key] = data;
+    } else {
+        graphDataCache[key] = [];
+    }
     
     const canvas = document.getElementById('fullscreenGraph');
     
@@ -462,25 +459,39 @@ function openFullscreenGraph(key, title) {
     canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
     
     // Start animation loop for fullscreen graph
-    const drawFullscreenGraph = () => {
-        let allData = graphData[key] || [];
+    const drawFullscreenGraph = async () => {
+        // Get cached data for this sensor
+        let cachedData = graphDataCache[key] || [];
         
-        // If scrolled back and historical data is available, merge it
-        if (graphScrollOffset > 0 && historicalData && historicalData.data) {
-            // Convert historical data to values array
-            const histValues = historicalData.data.map(d => d.value);
-            // Merge with live data (historical first, then live)
-            allData = [...histValues, ...allData];
-        }
-        
-        if (allData.length === 0) {
+        if (cachedData.length === 0) {
             fullscreenAnimationFrame = requestAnimationFrame(drawFullscreenGraph);
             return;
         }
         
+        // Check if we need to load more historical data
+        const now = Date.now() / 1000;
+        const oldestCached = cachedData.length > 0 ? cachedData[0].timestamp : now;
+        const newestCached = cachedData.length > 0 ? cachedData[cachedData.length - 1].timestamp : now;
+        const requestedOldest = now - graphScrollOffset - (graphZoomX * 1000);
+        
+        // If scrolled beyond cached data, fetch more
+        if (requestedOldest < oldestCached - 60 && !isLoadingHistorical) {
+            console.log('Loading more historical data...');
+            const moreData = await loadHistoricalData(key, requestedOldest - 1800, oldestCached);
+            if (moreData && moreData.length > 0) {
+                // Prepend older data to cache
+                graphDataCache[key] = [...moreData, ...cachedData];
+                cachedData = graphDataCache[key];
+                console.log(`Added ${moreData.length} older points`);
+            }
+        }
+        
+        // Convert cached data to values array
+        const allData = cachedData.map(d => d.value);
+        
         // Calculate how many points to show based on X zoom and update interval
         // Zoom represents time window in seconds: 0.01 = 10 seconds, 0.02 = 20 seconds, etc.
-        const updateIntervalSec = (currentSettings.updateInterval || 500) / 1000;
+        const updateIntervalSec = UPDATE_INTERVAL_MS / 1000;
         const timeWindowSeconds = graphZoomX * 1000; // Convert zoom to seconds (0.01 = 10s)
         const targetPoints = Math.ceil(timeWindowSeconds / updateIntervalSec);
         const pointsToShow = Math.max(5, Math.min(targetPoints, allData.length)); // Cap at available data
@@ -705,7 +716,7 @@ function handleTouchMove(e) {
         // Convert pixel movement to time offset with 1:1 sensitivity
         // Swipe right (positive deltaX) = graph moves right = see older data (increase offset)
         // Swipe left (negative deltaX) = graph moves left = see newer data (decrease offset)
-        const updateIntervalSec = (currentSettings.updateInterval || 500) / 1000;
+        const updateIntervalSec = UPDATE_INTERVAL_MS / 1000;
         const timeWindowSeconds = graphZoomX * 1000; // Current time window
         const timePerPixel = timeWindowSeconds / canvasWidth;
         
@@ -756,8 +767,8 @@ function closeFullscreenGraph() {
 function handleWheel(e) {
     e.preventDefault();
     
-    const updateIntervalSec = (currentSettings.updateInterval || 500) / 1000;
-    const maxScrollSeconds = historicalData ? (historicalData.buffer_size * updateIntervalSec) : 300;
+    const updateIntervalSec = UPDATE_INTERVAL_MS / 1000;
+    const maxScrollSeconds = 24 * 3600; // 24 hours max
     
     // Scroll speed: 1 second per wheel tick
     const scrollDelta = e.deltaY > 0 ? 1 : -1;
