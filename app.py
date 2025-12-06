@@ -814,6 +814,11 @@ def get_version():
             text=True,
             timeout=5
         )
+        
+        if result.returncode != 0:
+            print(f"Git rev-parse failed: {result.stderr}")
+            return jsonify({'commit': 'unknown', 'date': 'unknown', 'error': result.stderr.strip()})
+        
         commit_hash = result.stdout.strip()
         
         # Get commit date
@@ -824,14 +829,26 @@ def get_version():
             text=True,
             timeout=5
         )
-        commit_date = result.stdout.strip()
+        
+        if result.returncode != 0:
+            print(f"Git log failed: {result.stderr}")
+            commit_date = 'unknown'
+        else:
+            commit_date = result.stdout.strip()
         
         return jsonify({
             'commit': commit_hash,
             'date': commit_date
         })
+    except subprocess.TimeoutExpired as e:
+        print(f"Git command timeout: {e}")
+        return jsonify({'commit': 'timeout', 'date': 'timeout', 'error': 'Git command timed out'})
+    except FileNotFoundError as e:
+        print(f"Git not found: {e}")
+        return jsonify({'commit': 'no-git', 'date': 'no-git', 'error': 'Git not installed'})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        print(f"Version check error: {e}")
+        return jsonify({'commit': 'error', 'date': 'error', 'error': str(e)})
 
 @app.route('/api/data')
 def get_data():
