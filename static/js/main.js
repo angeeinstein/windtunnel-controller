@@ -177,6 +177,8 @@ function updateDisplay(data) {
         elements.timestamp.textContent = formatTimestamp(data.timestamp);
     }
     
+    const timestamp = data.timestamp;
+    
     // Update each sensor
     sensors.forEach(sensor => {
         if (!sensor.enabled || !elements[sensor.id]) return;
@@ -184,11 +186,12 @@ function updateDisplay(data) {
         let value = data[sensor.id];
         if (value === undefined || value === null) return;
         
-        // Apply unit conversions for specific sensor types
+        // Apply unit conversions for display
+        let displayValue = value;
         if (sensor.id === 'velocity' || sensor.name.toLowerCase().includes('velocity')) {
-            value = convertVelocity(value);
+            displayValue = convertVelocity(value);
         } else if (sensor.id === 'temperature' || sensor.name.toLowerCase().includes('temp')) {
-            value = convertTemperature(value);
+            displayValue = convertTemperature(value);
         }
         
         // Determine decimal places based on sensor type
@@ -198,15 +201,27 @@ function updateDisplay(data) {
         }
         
         // Update display
-        elements[sensor.id].textContent = formatNumber(value, decimals);
+        elements[sensor.id].textContent = formatNumber(displayValue, decimals);
         
         // Add to sparkline data buffer (keep last MAX_SPARKLINE_POINTS)
         if (!sparklineData[sensor.id]) {
             sparklineData[sensor.id] = [];
         }
-        sparklineData[sensor.id].push(value);
+        sparklineData[sensor.id].push(displayValue);
         if (sparklineData[sensor.id].length > MAX_SPARKLINE_POINTS) {
             sparklineData[sensor.id].shift();
+        }
+        
+        // Add to graph cache for fullscreen graphs (use raw SI value, not converted)
+        if (!graphDataCache[sensor.id]) {
+            graphDataCache[sensor.id] = [];
+        }
+        graphDataCache[sensor.id].push({ timestamp: timestamp, value: value });
+        
+        // Keep only last 2 hours of data in cache (14400 points at 500ms = 2 hours)
+        const MAX_CACHE_POINTS = 14400;
+        if (graphDataCache[sensor.id].length > MAX_CACHE_POINTS) {
+            graphDataCache[sensor.id].shift();
         }
     });
     
@@ -457,7 +472,22 @@ async function openFullscreenGraph(key, title) {
     const now = Date.now() / 1000;
     const data = await loadHistoricalData(key, now - 1800, now);
     if (data) {
-        graphDataCache[key] = data;
+        // Merge with any existing live data in cache
+        const existingCache = graphDataCache[key] || [];
+        
+        // If we have existing data, merge intelligently
+        if (existingCache.length > 0) {
+            // Find the newest timestamp in loaded historical data
+            const histNewest = data.length > 0 ? data[data.length - 1].timestamp : 0;
+            
+            // Keep only live data that's newer than historical data
+            const newerLiveData = existingCache.filter(d => d.timestamp > histNewest);
+            
+            // Merge: historical + newer live data
+            graphDataCache[key] = [...data, ...newerLiveData];
+        } else {
+            graphDataCache[key] = data;
+        }
     } else {
         graphDataCache[key] = [];
     }
@@ -502,8 +532,19 @@ async function openFullscreenGraph(key, title) {
         
         // Calculate time window
         const timeWindowSeconds = graphZoomX * 1000; // Convert zoom to seconds (0.01 = 10s)
-        const viewEndTime = now - graphScrollOffset; // End time of visible window
-        const viewStartTime = viewEndTime - timeWindowSeconds; // Start time of visible window
+        
+        // When viewing live data (scrollOffset = 0), use the actual latest data point as end time
+        // This prevents the graph from appearing to move left as new data arrives
+        let viewEndTime, viewStartTime;
+        if (graphScrollOffset === 0 && cachedData.length > 0) {
+            // Live mode: show up to the newest data point
+            viewEndTime = cachedData[cachedData.length - 1].timestamp;
+            viewStartTime = viewEndTime - timeWindowSeconds;
+        } else {
+            // Scrolled back in time
+            viewEndTime = now - graphScrollOffset;
+            viewStartTime = viewEndTime - timeWindowSeconds;
+        }
         
         // Filter data to only points within the visible time window
         const visibleData = cachedData.filter(d => d.timestamp >= viewStartTime && d.timestamp <= viewEndTime);
