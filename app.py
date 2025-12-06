@@ -4,6 +4,7 @@ import random
 import time
 import json
 import os
+import re
 from threading import Lock
 
 app = Flask(__name__)
@@ -24,7 +25,6 @@ DEFAULT_SETTINGS = {
     'decimalPlaces': 2,
     'velocityUnit': 'ms',
     'temperatureUnit': 'c',
-    'autoCalculate': True,
     'dataLogging': False,
     'highVelocity': 50,
     'systemName': 'Wind Tunnel Alpha',
@@ -203,57 +203,89 @@ def generate_mock_data():
             sensor_values[sensor_id] = value
             data[sensor_id] = value
     
-    # Calculate derived values
-    for sensor in sensors:
-        if not sensor.get('enabled', True):
-            continue
-            
-        if sensor['type'] == 'calculated':
+    # Calculate derived values with dependency resolution
+    # Build dependency graph for calculated sensors
+    calculated_sensors = [s for s in sensors if s.get('enabled', True) and s['type'] == 'calculated']
+    
+    # Topological sort to handle dependencies
+    evaluated = set()
+    max_iterations = len(calculated_sensors) + 1
+    iteration = 0
+    
+    while calculated_sensors and iteration < max_iterations:
+        iteration += 1
+        made_progress = False
+        
+        for sensor in calculated_sensors[:]:  # Copy list to modify during iteration
             formula = sensor.get('config', {}).get('formula', '')
-            try:
-                # Simple formula evaluation with error handling
-                # Replace sensor IDs with their values
-                eval_formula = formula
-                
-                # Check for circular references
-                if sensor['id'] in formula:
-                    print(f"Warning: Circular reference detected in sensor {sensor['id']}")
-                    data[sensor['id']] = 0
-                    continue
-                
-                # Replace sensor IDs with their values
-                for sid, val in sensor_values.items():
-                    # Use word boundaries to avoid partial replacements
-                    import re
-                    eval_formula = re.sub(r'\b' + re.escape(sid) + r'\b', str(val), eval_formula)
-                
-                # Replace ** with power operation (e.g., velocity**2)
-                eval_formula = eval_formula.replace('^', '**')
-                
-                # Validate the formula only contains safe characters
-                # Allow: numbers, operators, parentheses, spaces, decimal points, and **
-                if re.match(r'^[\d\s\.\+\-\*/\(\)\*]+$', eval_formula):
-                    # Safely evaluate
-                    result = eval(eval_formula)
+            sensor_id = sensor['id']
+            
+            # Extract referenced sensor IDs from formula
+            referenced_ids = set()
+            for sid in sensor_values.keys():
+                if re.search(r'\b' + re.escape(sid) + r'\b', formula):
+                    referenced_ids.add(sid)
+            
+            # Check if sensor references itself
+            if re.search(r'\b' + re.escape(sensor_id) + r'\b', formula):
+                print(f"Warning: Circular reference detected in sensor {sensor_id}")
+                data[sensor_id] = 0
+                calculated_sensors.remove(sensor)
+                made_progress = True
+                continue
+            
+            # Check if all dependencies are satisfied
+            if referenced_ids.issubset(sensor_values.keys()):
+                try:
+                    # Replace sensor IDs with their values
+                    eval_formula = formula
+                    for sid, val in sensor_values.items():
+                        eval_formula = re.sub(r'\b' + re.escape(sid) + r'\b', str(val), eval_formula)
                     
-                    # Check for invalid results
-                    if result is None or (isinstance(result, float) and (result != result or abs(result) == float('inf'))):
-                        print(f"Warning: Invalid result for sensor {sensor['id']}: {result}")
-                        data[sensor['id']] = 0
+                    # Replace ^ with ** for power operation
+                    eval_formula = eval_formula.replace('^', '**')
+                    
+                    # Validate the formula only contains safe characters
+                    if re.match(r'^[\d\s\.\+\-\*/\(\)\*]+$', eval_formula):
+                        result = eval(eval_formula)
+                        
+                        # Check for invalid results
+                        if result is None or (isinstance(result, float) and (result != result or abs(result) == float('inf'))):
+                            print(f"Warning: Invalid result for sensor {sensor_id}: {result}")
+                            data[sensor_id] = 0
+                        else:
+                            data[sensor_id] = float(result)
+                            sensor_values[sensor_id] = float(result)  # Make available for other calculated sensors
                     else:
-                        data[sensor['id']] = float(result)
-                else:
-                    print(f"Warning: Invalid formula for sensor {sensor['id']}: {formula}")
-                    data[sensor['id']] = 0
-            except ZeroDivisionError:
-                print(f"Warning: Division by zero in sensor {sensor['id']}")
+                        print(f"Warning: Invalid formula for sensor {sensor_id}: {formula}")
+                        data[sensor_id] = 0
+                    
+                    calculated_sensors.remove(sensor)
+                    evaluated.add(sensor_id)
+                    made_progress = True
+                    
+                except ZeroDivisionError:
+                    print(f"Warning: Division by zero in sensor {sensor_id}")
+                    data[sensor_id] = 0
+                    calculated_sensors.remove(sensor)
+                    made_progress = True
+                except (ValueError, SyntaxError, NameError) as e:
+                    print(f"Warning: Error evaluating formula for sensor {sensor_id}: {e}")
+                    data[sensor_id] = 0
+                    calculated_sensors.remove(sensor)
+                    made_progress = True
+                except Exception as e:
+                    print(f"Warning: Unexpected error for sensor {sensor_id}: {e}")
+                    data[sensor_id] = 0
+                    calculated_sensors.remove(sensor)
+                    made_progress = True
+        
+        # If no progress was made, we have circular dependencies
+        if not made_progress:
+            for sensor in calculated_sensors:
+                print(f"Warning: Circular dependency or missing reference for sensor {sensor['id']}")
                 data[sensor['id']] = 0
-            except (ValueError, SyntaxError, NameError) as e:
-                print(f"Warning: Error evaluating formula for sensor {sensor['id']}: {e}")
-                data[sensor['id']] = 0
-            except Exception as e:
-                print(f"Warning: Unexpected error for sensor {sensor['id']}: {e}")
-                data[sensor['id']] = 0
+            break
     
     return data
 

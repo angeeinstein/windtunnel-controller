@@ -572,16 +572,6 @@
                     </select>
                 </div>
             </div>
-
-            <div class="setting-row">
-                <div>
-                    <div class="setting-label">Auto-Calculate Lift/Drag</div>
-                    <div class="setting-description">Automatically display lift-to-drag ratio</div>
-                </div>
-                <div class="setting-control">
-                    <div class="toggle-switch active" id="autoCalculate"></div>
-                </div>
-            </div>
         </div>
 
         <!-- System Settings -->
@@ -771,7 +761,6 @@
                 decimalPlaces: parseInt(document.getElementById('decimalPlaces').value),
                 velocityUnit: document.getElementById('velocityUnit').value,
                 temperatureUnit: document.getElementById('temperatureUnit').value,
-                autoCalculate: document.getElementById('autoCalculate').classList.contains('active'),
                 dataLogging: document.getElementById('dataLogging').classList.contains('active'),
                 highVelocity: parseFloat(document.getElementById('highVelocity').value),
                 systemName: document.getElementById('systemName').value
@@ -814,7 +803,6 @@
                         
                         // Clear all toggles first
                         document.getElementById('darkMode').classList.remove('active');
-                        document.getElementById('autoCalculate').classList.remove('active');
                         document.getElementById('dataLogging').classList.remove('active');
                         
                         // Update form values with reset settings
@@ -827,7 +815,6 @@
                         
                         // Set toggles based on reset settings
                         if (settings.darkMode) document.getElementById('darkMode').classList.add('active');
-                        if (settings.autoCalculate) document.getElementById('autoCalculate').classList.add('active');
                         if (settings.dataLogging) document.getElementById('dataLogging').classList.add('active');
                     } else {
                         showNotification('Error', data.message, 'error');
@@ -935,7 +922,8 @@
                 html += '<strong>📊 Use sensor IDs in your formula:</strong><br>';
                 html += '<div style="margin-top: 8px;">';
                 
-                const availableSensors = sensors.filter((s, i) => i < index && s.type !== 'calculated');
+                // Show all other sensors (excluding this calculated sensor itself)
+                const availableSensors = sensors.filter((s, i) => i !== index && s.id !== sensor.id);
                 if (availableSensors.length > 0) {
                     html += '<table style="width: 100%; margin-top: 8px; font-size: 0.85rem;">';
                     html += '<tr style="border-bottom: 1px solid #ccc;"><th style="text-align: left; padding: 4px;">Sensor ID</th><th style="text-align: left; padding: 4px;">Name</th></tr>';
@@ -944,7 +932,7 @@
                     });
                     html += '</table>';
                 } else {
-                    html += '<em style="color: #666;">⚠️ No sensors available yet. Add sensors above this one first.</em>';
+                    html += '<em style="color: #666;">⚠️ No other sensors available. Add sensors first.</em>';
                 }
                 
                 html += '</div>';
@@ -1044,26 +1032,49 @@
                 errors.push(`Invalid sensor IDs (must start with letter/underscore, contain only letters/numbers/underscores): ${invalidIds.map(s => s.id).join(', ')}`);
             }
             
-            // Check calculated sensors for circular references
+            // Check calculated sensors for valid formulas
             sensors.forEach((sensor, index) => {
                 if (sensor.type === 'calculated') {
                     const formula = sensor.config?.formula || '';
                     
-                    // Check if sensor references itself
-                    if (formula.includes(sensor.id)) {
-                        errors.push(`Sensor "${sensor.name}" (${sensor.id}) references itself in formula`);
-                    }
-                    
-                    // Check if formula references sensors that come after it
-                    for (let i = index + 1; i < sensors.length; i++) {
-                        if (formula.includes(sensors[i].id)) {
-                            errors.push(`Sensor "${sensor.name}" references sensor "${sensors[i].name}" which comes after it. Reorder sensors.`);
-                        }
-                    }
-                    
                     // Check if formula is empty
                     if (!formula || formula.trim() === '') {
                         errors.push(`Calculated sensor "${sensor.name}" has no formula`);
+                        return;
+                    }
+                    
+                    // Check if sensor references itself
+                    const selfRefRegex = new RegExp('\\b' + sensor.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b');
+                    if (selfRefRegex.test(formula)) {
+                        errors.push(`Sensor "${sensor.name}" (${sensor.id}) references itself in formula`);
+                    }
+                    
+                    // Extract all potential sensor ID references from formula
+                    // Match word patterns that look like sensor IDs (start with letter/underscore)
+                    const idPattern = /\b[a-zA-Z_][a-zA-Z0-9_]*\b/g;
+                    const referencedIds = formula.match(idPattern) || [];
+                    
+                    // Get all valid sensor IDs (excluding the current sensor)
+                    const validIds = sensors.filter((s, i) => i !== index).map(s => s.id);
+                    
+                    // Check for unknown sensor IDs
+                    const unknownIds = referencedIds.filter(id => {
+                        // Skip if it's a number or common math term
+                        if (/^\d+$/.test(id)) return false;
+                        // Skip common allowed terms
+                        if (['e', 'pi', 'abs', 'min', 'max', 'sqrt', 'pow'].includes(id.toLowerCase())) return false;
+                        // Check if it's a valid sensor ID
+                        return !validIds.includes(id);
+                    });
+                    
+                    if (unknownIds.length > 0) {
+                        const uniqueUnknown = [...new Set(unknownIds)];
+                        errors.push(`Sensor "${sensor.name}" uses unknown sensor ID(s): ${uniqueUnknown.join(', ')}. Available IDs: ${validIds.join(', ')}`);
+                    }
+                    
+                    // Validate formula syntax - check for valid characters
+                    if (!/^[a-zA-Z0-9_\s\.\+\-\*\/\(\)\^]+$/.test(formula)) {
+                        errors.push(`Sensor "${sensor.name}" has invalid characters in formula. Use only: sensor IDs, numbers, operators (+, -, *, /, ^, **), parentheses`);
                     }
                 }
             });
@@ -1229,7 +1240,6 @@
                     document.getElementById('systemName').value = settings.systemName || 'Wind Tunnel Alpha';
                     
                     if (settings.darkMode) document.getElementById('darkMode').classList.add('active');
-                    if (settings.autoCalculate !== false) document.getElementById('autoCalculate').classList.add('active');
                     if (settings.dataLogging) document.getElementById('dataLogging').classList.add('active');
                 })
                 .catch(error => {
@@ -1290,7 +1300,6 @@
                     
                     // Clear all toggles first
                     document.getElementById('darkMode').classList.remove('active');
-                    document.getElementById('autoCalculate').classList.remove('active');
                     document.getElementById('dataLogging').classList.remove('active');
                     
                     // Set form values
@@ -1303,7 +1312,6 @@
                     
                     // Set toggles based on settings
                     if (settings.darkMode) document.getElementById('darkMode').classList.add('active');
-                    if (settings.autoCalculate) document.getElementById('autoCalculate').classList.add('active');
                     if (settings.dataLogging) document.getElementById('dataLogging').classList.add('active');
                 })
                 .catch(error => {
