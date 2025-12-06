@@ -26,6 +26,12 @@ MAX_LOG_FILE_SIZE_MB = 50  # Rotate log file when it exceeds 50MB
 MAX_LOG_FILES = 100  # Keep maximum 100 log files (oldest deleted automatically)
 MAX_TOTAL_LOG_SIZE_MB = 2000  # Maximum total size of all logs (2GB)
 
+# Historical data buffer configuration
+# Keep last 6 hours of data in memory for analysis (at 500ms intervals = 43,200 points)
+# Since running on localhost (Raspberry Pi), network bandwidth is not a concern
+MAX_HISTORICAL_POINTS = 43200  # 6 hours at 500ms intervals (~5-10MB RAM)
+historical_data_buffer = []  # List of {timestamp, data_dict} entries
+
 # Current log file (set when logging starts)
 current_log_file = None
 log_session_start = None
@@ -460,11 +466,21 @@ def background_data_updater():
     Uses configurable update interval from settings.
     All data transmitted in SI units.
     """
-    global current_log_file
+    global current_log_file, historical_data_buffer
     
     while True:
         data = generate_mock_data()
         socketio.emit('data_update', data)
+        
+        # Store in historical buffer for time-based scrolling
+        historical_data_buffer.append({
+            'timestamp': data.get('timestamp', time.time()),
+            'data': data.copy()
+        })
+        
+        # Keep buffer size limited (rolling window)
+        if len(historical_data_buffer) > MAX_HISTORICAL_POINTS:
+            historical_data_buffer.pop(0)
         
         # Log data if enabled
         if current_settings.get('dataLogging', False):
@@ -499,6 +515,57 @@ def get_sensors():
     if not sensors:
         sensors = DEFAULT_SENSORS
     return jsonify(sensors)
+
+@app.route('/api/historical-data', methods=['GET'])
+def get_historical_data():
+    """
+    Get historical data for time-based analysis.
+    Query parameters:
+    - sensor: sensor ID to retrieve (required)
+    - start_time: Unix timestamp for start (optional, default: beginning of buffer)
+    - end_time: Unix timestamp for end (optional, default: now)
+    - max_points: Maximum number of points to return (optional, default: all in range)
+    """
+    from flask import request
+    
+    try:
+        sensor_id = request.args.get('sensor')
+        if not sensor_id:
+            return jsonify({'status': 'error', 'message': 'sensor parameter required'}), 400
+        
+        start_time = float(request.args.get('start_time', 0))
+        end_time = float(request.args.get('end_time', time.time() + 1000))
+        max_points = int(request.args.get('max_points', 10000))  # Localhost: allow up to 10k points
+        
+        # Filter data by time range
+        filtered_data = []
+        for entry in historical_data_buffer:
+            ts = entry['timestamp']
+            if start_time <= ts <= end_time:
+                value = entry['data'].get(sensor_id)
+                if value is not None:
+                    filtered_data.append({
+                        'timestamp': ts,
+                        'value': value
+                    })
+        
+        # Downsample if too many points
+        if len(filtered_data) > max_points:
+            # Simple decimation - take every nth point
+            step = len(filtered_data) // max_points
+            filtered_data = filtered_data[::step]
+        
+        return jsonify({
+            'status': 'success',
+            'sensor': sensor_id,
+            'data': filtered_data,
+            'buffer_start': historical_data_buffer[0]['timestamp'] if historical_data_buffer else None,
+            'buffer_end': historical_data_buffer[-1]['timestamp'] if historical_data_buffer else None,
+            'buffer_size': len(historical_data_buffer),
+            'max_buffer_size': MAX_HISTORICAL_POINTS
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/api/settings', methods=['GET'])
 def get_settings():

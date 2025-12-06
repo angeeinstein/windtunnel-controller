@@ -272,10 +272,11 @@ document.getElementById('resetBtn').addEventListener('click', () => {
 // Initial connection message
 console.log('Wind Tunnel Control System initialized');
 
-// Graph data storage (keep last 500 data points, display 50 by default in sparklines)
+// Graph data storage (keep last 2000 data points for local analysis, display 50 by default in sparklines)
+// Since running on localhost (Raspberry Pi), memory is not a concern
 const graphData = {};
 
-const MAX_GRAPH_POINTS = 500;
+const MAX_GRAPH_POINTS = 2000;  // ~3-4 minutes at 500ms intervals
 const DEFAULT_DISPLAY_POINTS = 50;
 
 // Add data point to graph
@@ -361,6 +362,9 @@ let fullscreenAnimationFrame = null;
 let graphZoomX = 1.0; // X-axis zoom (time)
 let graphZoomY = 1.0; // Y-axis zoom (value range)
 let graphStartTime = null;
+let graphScrollOffset = 0; // Scroll back in time (0 = live, positive = seconds in past)
+let historicalData = null; // Cache for historical data
+let isLoadingHistorical = false;
 
 // Touch handling for pinch zoom
 let touchStartDistance = 0;
@@ -386,6 +390,7 @@ function getTouchAngle(touch1, touch2) {
 function resetZoom() {
     graphZoomX = 1.0;
     graphZoomY = 1.0;
+    graphScrollOffset = 0;
     updateZoomDisplay();
 }
 
@@ -393,6 +398,38 @@ function resetZoom() {
 function updateZoomDisplay() {
     document.getElementById('zoomX').textContent = Math.round(graphZoomX * 100) + '%';
     document.getElementById('zoomY').textContent = Math.round(graphZoomY * 100) + '%';
+    
+    // Update scroll indicator
+    const scrollIndicator = document.getElementById('scrollIndicator');
+    if (scrollIndicator) {
+        if (graphScrollOffset > 0) {
+            scrollIndicator.textContent = `📜 -${Math.round(graphScrollOffset)}s`;
+            scrollIndicator.style.display = 'block';
+        } else {
+            scrollIndicator.style.display = 'none';
+        }
+    }
+}
+
+// Load historical data from server
+async function loadHistoricalData(sensorId) {
+    if (isLoadingHistorical) return;
+    
+    isLoadingHistorical = true;
+    try {
+        // Request up to 10,000 points (localhost has no bandwidth concerns)
+        const response = await fetch(`/api/historical-data?sensor=${sensorId}&max_points=10000`);
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            historicalData = result;
+            console.log(`Loaded ${result.data.length} historical points for ${sensorId} (${(result.buffer_size * (currentSettings.updateInterval || 500) / 1000 / 60).toFixed(1)} minutes available)`);
+        }
+    } catch (error) {
+        console.error('Failed to load historical data:', error);
+    } finally {
+        isLoadingHistorical = false;
+    }
 }
 
 // Open fullscreen graph
@@ -400,12 +437,20 @@ function openFullscreenGraph(key, title) {
     currentGraphKey = key;
     graphZoomX = 1.0;
     graphZoomY = 1.0;
+    graphScrollOffset = 0;
     graphStartTime = Date.now();
+    historicalData = null;
     document.getElementById('graphModalTitle').textContent = title;
     document.getElementById('graphModal').style.display = 'flex';
     updateZoomDisplay();
     
+    // Load historical data from server
+    loadHistoricalData(key);
+    
     const canvas = document.getElementById('fullscreenGraph');
+    
+    // Add mouse wheel listener for scrolling
+    canvas.addEventListener('wheel', handleWheel, { passive: false });
     
     // Add touch event listeners for pinch zoom
     canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
@@ -414,17 +459,32 @@ function openFullscreenGraph(key, title) {
     
     // Start animation loop for fullscreen graph
     const drawFullscreenGraph = () => {
-        const allData = graphData[key];
+        let allData = graphData[key] || [];
         
-        if (!allData || allData.length === 0) {
+        // If scrolled back and historical data is available, merge it
+        if (graphScrollOffset > 0 && historicalData && historicalData.data) {
+            // Convert historical data to values array
+            const histValues = historicalData.data.map(d => d.value);
+            // Merge with live data (historical first, then live)
+            allData = [...histValues, ...allData];
+        }
+        
+        if (allData.length === 0) {
             fullscreenAnimationFrame = requestAnimationFrame(drawFullscreenGraph);
             return;
         }
         
-        // Calculate how many points to show based on X zoom
+        // Calculate how many points to show based on X zoom and scroll offset
         const pointsToShow = Math.max(5, Math.floor(allData.length / graphZoomX));
-        const startIndex = Math.max(0, allData.length - pointsToShow);
-        const data = allData.slice(startIndex);
+        
+        // Apply scroll offset (in seconds converted to data points)
+        const updateIntervalSec = (currentSettings.updateInterval || 500) / 1000;
+        const scrollOffsetPoints = Math.floor(graphScrollOffset / updateIntervalSec);
+        
+        // Calculate window of data to show
+        const endIndex = allData.length - scrollOffsetPoints;
+        const startIndex = Math.max(0, endIndex - pointsToShow);
+        const data = allData.slice(startIndex, endIndex);
         
         const ctx = canvas.getContext('2d');
         const container = canvas.parentElement;
@@ -485,9 +545,10 @@ function openFullscreenGraph(key, title) {
             ctx.lineTo(x, padding + graphHeight);
             ctx.stroke();
             
-            // Time labels (seconds ago)
+            // Time labels (seconds ago, accounting for scroll offset)
             const dataIndex = Math.floor((i / numTimeLabels) * (data.length - 1));
-            const secondsAgo = (allData.length - startIndex - dataIndex) * (currentSettings.updateInterval || 500) / 1000;
+            const pointsFromEnd = (endIndex - startIndex) - dataIndex;
+            const secondsAgo = (pointsFromEnd * updateIntervalSec) + graphScrollOffset;
             ctx.fillStyle = '#2c3e50';
             ctx.font = '14px Segoe UI';
             ctx.textAlign = 'center';
@@ -628,7 +689,8 @@ function handleTouchEnd(e) {
 function closeFullscreenGraph() {
     const canvas = document.getElementById('fullscreenGraph');
     
-    // Remove touch event listeners
+    // Remove event listeners
+    canvas.removeEventListener('wheel', handleWheel);
     canvas.removeEventListener('touchstart', handleTouchStart);
     canvas.removeEventListener('touchmove', handleTouchMove);
     canvas.removeEventListener('touchend', handleTouchEnd);
@@ -641,6 +703,22 @@ function closeFullscreenGraph() {
     currentGraphKey = null;
     graphZoomX = 1.0;
     graphZoomY = 1.0;
+    graphScrollOffset = 0;
+    historicalData = null;
+}
+
+// Handle mouse wheel for scrolling through time
+function handleWheel(e) {
+    e.preventDefault();
+    
+    const updateIntervalSec = (currentSettings.updateInterval || 500) / 1000;
+    const maxScrollSeconds = historicalData ? (historicalData.buffer_size * updateIntervalSec) : 300;
+    
+    // Scroll speed: 1 second per wheel tick
+    const scrollDelta = e.deltaY > 0 ? 1 : -1;
+    
+    graphScrollOffset = Math.max(0, Math.min(maxScrollSeconds, graphScrollOffset + scrollDelta));
+    updateZoomDisplay();
 }
 
 // Make functions globally accessible
