@@ -359,7 +359,7 @@ function updateAllSparklines() {
 // Fullscreen graph variables
 let currentGraphKey = null;
 let fullscreenAnimationFrame = null;
-let graphZoomX = 1.0; // X-axis zoom (time)
+let graphZoomX = 0.025; // X-axis zoom (time) - default to showing 50 out of 2000 points
 let graphZoomY = 1.0; // Y-axis zoom (value range)
 let graphStartTime = null;
 let graphScrollOffset = 0; // Scroll back in time (0 = live, positive = seconds in past)
@@ -388,7 +388,7 @@ function getTouchAngle(touch1, touch2) {
 
 // Reset zoom to default
 function resetZoom() {
-    graphZoomX = 1.0;
+    graphZoomX = 0.025; // Show 50 out of 2000 points by default
     graphZoomY = 1.0;
     graphScrollOffset = 0;
     updateZoomDisplay();
@@ -435,7 +435,7 @@ async function loadHistoricalData(sensorId) {
 // Open fullscreen graph
 function openFullscreenGraph(key, title) {
     currentGraphKey = key;
-    graphZoomX = 1.0;
+    graphZoomX = 0.025; // Show 50 out of 2000 points by default
     graphZoomY = 1.0;
     graphScrollOffset = 0;
     graphStartTime = Date.now();
@@ -701,7 +701,7 @@ function closeFullscreenGraph() {
         fullscreenAnimationFrame = null;
     }
     currentGraphKey = null;
-    graphZoomX = 1.0;
+    graphZoomX = 0.025;
     graphZoomY = 1.0;
     graphScrollOffset = 0;
     historicalData = null;
