@@ -177,6 +177,7 @@ def generate_mock_data():
     sensors = current_settings.get('sensors', [])
     if not sensors or len(sensors) == 0:
         sensors = DEFAULT_SENSORS
+        print(f"Using DEFAULT_SENSORS: {len(sensors)} sensors")
     
     data = {'timestamp': time.time()}
     sensor_values = {}
@@ -188,6 +189,8 @@ def generate_mock_data():
             
         sensor_id = sensor['id']
         sensor_type = sensor['type']
+        
+        print(f"Processing sensor: {sensor_id}, type: {sensor_type}, name: {sensor['name']}")
         
         if sensor_type == 'mock':
             # Generate random mock data
