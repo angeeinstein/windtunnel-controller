@@ -1069,6 +1069,35 @@
                     if (/\/\s*0(\.0*)?\s*($|[^0-9\.])/g.test(formula + ' ') || /\/\s*0(\.0*)?$/g.test(formula)) {
                         errors.push(`Sensor "${sensor.name}" contains division by zero in formula`);
                     }
+                    
+                    // Check for orphaned operators (operators at start, end, or consecutive)
+                    // Remove spaces for easier checking
+                    const trimmedFormula = formula.replace(/\s+/g, '');
+                    
+                    // Check for operators at the start (except minus for negative numbers)
+                    if (/^[\+\*\/\^]/.test(trimmedFormula)) {
+                        errors.push(`Sensor "${sensor.name}" has operator at the beginning of formula`);
+                    }
+                    
+                    // Check for operators at the end
+                    if (/[\+\-\*\/\^]$/.test(trimmedFormula)) {
+                        errors.push(`Sensor "${sensor.name}" has operator at the end of formula`);
+                    }
+                    
+                    // Check for consecutive operators (except ** and ^)
+                    // Allow patterns like **2 but catch invalid ones like *+, //, +-
+                    if (/[\+\-\*\/\^]{2,}/.test(trimmedFormula.replace(/\*\*/g, 'P').replace(/\^\d/g, 'P'))) {
+                        // Double-check it's not a valid ** pattern
+                        const withoutPower = trimmedFormula.replace(/\*\*/g, '');
+                        if (/[\+\-\*\/\^]{2,}/.test(withoutPower)) {
+                            errors.push(`Sensor "${sensor.name}" has consecutive or orphaned operators in formula`);
+                        }
+                    }
+                    
+                    // Check for operators next to parentheses (invalid cases like (*5 or 5*) )
+                    if (/\([\+\*\/\^]/.test(trimmedFormula) || /[\+\-\*\/\^]\)/.test(trimmedFormula)) {
+                        errors.push(`Sensor "${sensor.name}" has invalid operator placement near parentheses`);
+                    }
                 }
             });
             
