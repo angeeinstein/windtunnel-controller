@@ -371,6 +371,10 @@ let touchStartDistance = 0;
 let touchStartAngle = 0;
 let touchStartZoomX = 1.0;
 let touchStartZoomY = 1.0;
+let touchStartX = 0;
+let touchStartY = 0;
+let touchStartScrollOffset = 0;
+let isPanning = false;
 
 // Calculate distance between two touch points
 function getTouchDistance(touch1, touch2) {
@@ -474,8 +478,9 @@ function openFullscreenGraph(key, title) {
             return;
         }
         
-        // Calculate how many points to show based on X zoom and scroll offset
-        const pointsToShow = Math.max(5, Math.floor(allData.length / graphZoomX));
+        // Calculate how many points to show based on X zoom
+        // graphZoomX of 1.0 = show all points, 0.5 = show half, 0.025 = show 2.5% (50 of 2000)
+        const pointsToShow = Math.max(5, Math.floor(allData.length * graphZoomX));
         
         // Apply scroll offset (in seconds converted to data points)
         const updateIntervalSec = (currentSettings.updateInterval || 500) / 1000;
@@ -638,16 +643,24 @@ function openFullscreenGraph(key, title) {
 function handleTouchStart(e) {
     if (e.touches.length === 2) {
         e.preventDefault();
+        isPanning = false;
         touchStartDistance = getTouchDistance(e.touches[0], e.touches[1]);
         touchStartAngle = getTouchAngle(e.touches[0], e.touches[1]);
         touchStartZoomX = graphZoomX;
         touchStartZoomY = graphZoomY;
+    } else if (e.touches.length === 1) {
+        // Single touch - prepare for panning
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+        touchStartScrollOffset = graphScrollOffset;
+        isPanning = true;
     }
 }
 
 function handleTouchMove(e) {
     if (e.touches.length === 2) {
         e.preventDefault();
+        isPanning = false;
         
         const currentDistance = getTouchDistance(e.touches[0], e.touches[1]);
         const currentAngle = getTouchAngle(e.touches[0], e.touches[1]);
@@ -664,17 +677,40 @@ function handleTouchMove(e) {
         // Apply zoom based on gesture direction
         if (horizontalWeight > 0.7) {
             // Mostly horizontal - zoom X axis
-            graphZoomX = Math.max(0.2, Math.min(10.0, touchStartZoomX * zoomFactor));
+            graphZoomX = Math.max(0.01, Math.min(1.0, touchStartZoomX * zoomFactor));
         } else if (verticalWeight > 0.7) {
             // Mostly vertical - zoom Y axis
-            graphZoomY = Math.max(0.2, Math.min(10.0, touchStartZoomY * zoomFactor));
+            graphZoomY = Math.max(0.01, Math.min(10.0, touchStartZoomY * zoomFactor));
         } else {
             // Diagonal - zoom both axes
-            graphZoomX = Math.max(0.2, Math.min(10.0, touchStartZoomX * zoomFactor));
-            graphZoomY = Math.max(0.2, Math.min(10.0, touchStartZoomY * zoomFactor));
+            graphZoomX = Math.max(0.01, Math.min(1.0, touchStartZoomX * zoomFactor));
+            graphZoomY = Math.max(0.01, Math.min(10.0, touchStartZoomY * zoomFactor));
         }
         
         updateZoomDisplay();
+    } else if (e.touches.length === 1 && isPanning) {
+        e.preventDefault();
+        
+        // Single touch - pan through time
+        const deltaX = e.touches[0].clientX - touchStartX;
+        const canvas = document.getElementById('fullscreenGraph');
+        const canvasWidth = canvas.width - 160; // Account for padding
+        
+        // Convert pixel movement to time offset
+        // Positive deltaX = swipe right = go back in time (increase offset)
+        // Negative deltaX = swipe left = go forward in time (decrease offset)
+        const updateIntervalSec = (currentSettings.updateInterval || 500) / 1000;
+        const allData = graphData[currentGraphKey] || [];
+        const pointsToShow = Math.max(5, Math.floor(allData.length * graphZoomX));
+        const totalTimeShown = pointsToShow * updateIntervalSec;
+        const timePerPixel = totalTimeShown / canvasWidth;
+        
+        const deltaTime = -deltaX * timePerPixel; // Negative because right swipe = back in time
+        const newOffset = Math.max(0, touchStartScrollOffset + deltaTime);
+        
+        // Limit scrolling to available data
+        const maxOffset = (allData.length - pointsToShow) * updateIntervalSec;
+        graphScrollOffset = Math.min(newOffset, Math.max(0, maxOffset));
     }
 }
 
@@ -682,6 +718,9 @@ function handleTouchEnd(e) {
     if (e.touches.length < 2) {
         touchStartDistance = 0;
         touchStartAngle = 0;
+    }
+    if (e.touches.length === 0) {
+        isPanning = false;
     }
 }
 
