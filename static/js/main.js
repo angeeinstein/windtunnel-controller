@@ -164,15 +164,6 @@ function formatNumber(number, decimals) {
     return decimalPart ? `${withSpaces},${decimalPart}` : withSpaces;
 }
 
-// Calculate lift/drag ratio
-function calculateLiftDragRatio(lift, drag) {
-    if (drag === 0 || drag === null || drag === undefined) {
-        return '--';
-    }
-    const ratio = lift / drag;
-    return ratio.toFixed(2);
-}
-
 // Update display with new data
 function updateDisplay(data) {
     // Update timestamp
@@ -282,16 +273,7 @@ document.getElementById('resetBtn').addEventListener('click', () => {
 console.log('Wind Tunnel Control System initialized');
 
 // Graph data storage (keep last 50 data points for sparklines)
-const graphData = {
-    velocity: [],
-    lift: [],
-    drag: [],
-    pressure: [],
-    temperature: [],
-    rpm: [],
-    power: [],
-    liftDragRatio: []
-};
+const graphData = {};
 
 const MAX_GRAPH_POINTS = 50;
 
