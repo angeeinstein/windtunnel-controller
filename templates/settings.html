@@ -875,12 +875,7 @@
                 sensorDiv.className = 'sensor-item';
                 sensorDiv.innerHTML = `
                     <div class="sensor-item-header">
-                        <h3 style="margin: 0; color: var(--primary-color);">
-                            Sensor ${index + 1}
-                            <span style="font-size: 0.8rem; color: var(--text-secondary); font-weight: normal; margin-left: 10px;">
-                                ID: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">${sensor.id}</code>
-                            </span>
-                        </h3>
+                        <h3 style="margin: 0; color: var(--primary-color);">Sensor ${index + 1}</h3>
                         <div class="sensor-item-controls">
                             ${index > 0 ? `<button class="sensor-item-btn" onclick="moveSensor(${index}, -1)">↑</button>` : ''}
                             ${index < sensors.length - 1 ? `<button class="sensor-item-btn" onclick="moveSensor(${index}, 1)">↓</button>` : ''}
@@ -888,6 +883,10 @@
                         </div>
                     </div>
                     <div class="sensor-fields">
+                        <div class="sensor-field">
+                            <label>Sensor ID (for formulas)</label>
+                            <input type="text" value="${sensor.id}" onchange="updateSensor(${index}, 'id', this.value); renderSensorList();" placeholder="e.g., lift, temp1">
+                        </div>
                         <div class="sensor-field">
                             <label>Sensor Name</label>
                             <input type="text" value="${sensor.name}" onchange="updateSensor(${index}, 'name', this.value)">
@@ -933,20 +932,28 @@
             // For calculated type, show available sensor IDs
             if (sensor.type === 'calculated') {
                 html += '<div style="background: #e8f5e9; padding: 12px; border-radius: 6px; margin-bottom: 10px; font-size: 0.9rem;">';
-                html += '<strong>Available sensor IDs for formulas:</strong><br>';
-                html += '<div style="margin-top: 8px; font-family: monospace; color: #2e7d32;">';
+                html += '<strong>📊 Use sensor IDs in your formula:</strong><br>';
+                html += '<div style="margin-top: 8px;">';
                 
                 const availableSensors = sensors.filter((s, i) => i < index && s.type !== 'calculated');
                 if (availableSensors.length > 0) {
+                    html += '<table style="width: 100%; margin-top: 8px; font-size: 0.85rem;">';
+                    html += '<tr style="border-bottom: 1px solid #ccc;"><th style="text-align: left; padding: 4px;">Sensor ID</th><th style="text-align: left; padding: 4px;">Name</th></tr>';
                     availableSensors.forEach(s => {
-                        html += `<span style="background: white; padding: 2px 6px; margin: 2px; display: inline-block; border-radius: 3px;">${s.id}</span> `;
+                        html += `<tr><td style="padding: 4px;"><code style="background: white; padding: 2px 6px; border-radius: 3px; color: #2e7d32; font-weight: bold;">${s.id}</code></td><td style="padding: 4px; color: #666;">${s.name}</td></tr>`;
                     });
+                    html += '</table>';
                 } else {
-                    html += '<em style="color: #666;">No sensors available yet. Add sensors above this one first.</em>';
+                    html += '<em style="color: #666;">⚠️ No sensors available yet. Add sensors above this one first.</em>';
                 }
                 
                 html += '</div>';
-                html += '<div style="margin-top: 8px; color: #555;">Example: <code>lift / drag</code> or <code>velocity * 2</code></div>';
+                html += '<div style="margin-top: 8px; padding: 8px; background: white; border-radius: 4px; color: #555;">';
+                html += '<strong>Examples:</strong><br>';
+                html += '• <code>lift / drag</code> - Divide lift by drag<br>';
+                html += '• <code>velocity * 2</code> - Double the velocity<br>';
+                html += '• <code>(lift + drag) / 2</code> - Average of two sensors';
+                html += '</div>';
                 html += '</div>';
             }
             
