@@ -175,7 +175,7 @@ def generate_mock_data():
     Data logging, calculations, and storage always use SI units.
     """
     sensors = current_settings.get('sensors', [])
-    if not sensors:
+    if not sensors or len(sensors) == 0:
         sensors = DEFAULT_SENSORS
     
     data = {'timestamp': time.time()}
@@ -512,8 +512,11 @@ def get_sensor_types():
 def get_sensors():
     """Get configured sensors."""
     sensors = current_settings.get('sensors', [])
-    if not sensors:
+    if not sensors or len(sensors) == 0:
         sensors = DEFAULT_SENSORS
+        # Also update current_settings to use defaults
+        current_settings['sensors'] = DEFAULT_SENSORS
+        save_settings_to_file(current_settings)
     return jsonify(sensors)
 
 @app.route('/api/historical-data', methods=['GET'])
