@@ -36,6 +36,8 @@ function generateSensorCards() {
     const dataGrid = document.getElementById('dataGrid');
     dataGrid.innerHTML = '';
     
+    console.log('Generating sensor cards for:', sensors.length, 'sensors');
+    
     // Initialize core UI elements
     elements = {
         timestamp: document.getElementById('timestamp'),
@@ -44,6 +46,7 @@ function generateSensorCards() {
     };
     
     sensors.forEach(sensor => {
+        console.log('Processing sensor:', sensor.id, 'enabled:', sensor.enabled);
         if (!sensor.enabled) return;
         
         const card = document.createElement('div');
@@ -62,16 +65,19 @@ function generateSensorCards() {
         `;
         
         dataGrid.appendChild(card);
+        console.log('Created card for sensor:', sensor.id);
         
         // Store element references
         elements[sensor.id] = document.getElementById(sensor.id);
         elements[sensor.id + '-unit'] = document.getElementById(sensor.id + '-unit');
         
-        // Initialize graph data for this sensor
-        if (!graphData[sensor.id]) {
-            graphData[sensor.id] = [];
+        // Initialize sparkline data for this sensor
+        if (!sparklineData[sensor.id]) {
+            sparklineData[sensor.id] = [];
         }
     });
+    
+    console.log('Total cards created:', dataGrid.children.length);
 }
 
 // Listen for settings updates
@@ -194,11 +200,18 @@ function updateDisplay(data) {
         // Update display
         elements[sensor.id].textContent = formatNumber(value, decimals);
         
-        // Note: Graph data is now fetched from API when graphs are opened
-        // Real-time sparklines removed for now - can add back with live buffer if needed
+        // Add to sparkline data buffer (keep last MAX_SPARKLINE_POINTS)
+        if (!sparklineData[sensor.id]) {
+            sparklineData[sensor.id] = [];
+        }
+        sparklineData[sensor.id].push(value);
+        if (sparklineData[sensor.id].length > MAX_SPARKLINE_POINTS) {
+            sparklineData[sensor.id].shift();
+        }
     });
     
-    // Sparklines removed - data is fetched on-demand from server
+    // Update sparklines with new data
+    updateAllSparklines()
     
     // Add brief highlight animation to updated values
     Object.values(elements).forEach(el => {
@@ -271,6 +284,10 @@ document.getElementById('resetBtn').addEventListener('click', () => {
 // Initial connection message
 console.log('Wind Tunnel Control System initialized');
 
+// Local sparkline buffer - keeps last 50 points for each sensor for dashboard sparklines
+const sparklineData = {}; // {sensorId: [value1, value2, ...]}
+const MAX_SPARKLINE_POINTS = 50;
+
 // Graph data cache - stores fetched data from server API
 // Data is lazy-loaded and cached when viewing graphs
 const graphDataCache = {}; // {sensorId: [{timestamp, value}, ...]}
@@ -329,16 +346,13 @@ function drawSparkline(canvasId, data, color = '#3498db') {
 }
 
 // Draw all sparklines
-// Draw all sparklines
 function updateAllSparklines() {
     sensors.forEach(sensor => {
         if (!sensor.enabled) return;
         const canvasId = 'sparkline-' + sensor.id;
-        const allData = graphData[sensor.id] || [];
-        // Only show last 50 points in sparkline
-        const displayData = allData.slice(-DEFAULT_DISPLAY_POINTS);
+        const data = sparklineData[sensor.id] || [];
         const color = sensor.color || '#3498db';
-        drawSparkline(canvasId, displayData, color);
+        drawSparkline(canvasId, data, color);
     });
 }
 
@@ -486,23 +500,13 @@ async function openFullscreenGraph(key, title) {
             }
         }
         
-        // Convert cached data to values array
-        const allData = cachedData.map(d => d.value);
-        
-        // Calculate how many points to show based on X zoom and update interval
-        // Zoom represents time window in seconds: 0.01 = 10 seconds, 0.02 = 20 seconds, etc.
-        const updateIntervalSec = UPDATE_INTERVAL_MS / 1000;
+        // Calculate time window
         const timeWindowSeconds = graphZoomX * 1000; // Convert zoom to seconds (0.01 = 10s)
-        const targetPoints = Math.ceil(timeWindowSeconds / updateIntervalSec);
-        const pointsToShow = Math.max(5, Math.min(targetPoints, allData.length)); // Cap at available data
+        const viewEndTime = now - graphScrollOffset; // End time of visible window
+        const viewStartTime = viewEndTime - timeWindowSeconds; // Start time of visible window
         
-        // Apply scroll offset (in seconds converted to data points)
-        const scrollOffsetPoints = Math.floor(graphScrollOffset / updateIntervalSec);
-        
-        // Calculate window of data to show
-        const endIndex = allData.length - scrollOffsetPoints;
-        const startIndex = Math.max(0, endIndex - pointsToShow);
-        const data = allData.slice(startIndex, endIndex);
+        // Filter data to only points within the visible time window
+        const visibleData = cachedData.filter(d => d.timestamp >= viewStartTime && d.timestamp <= viewEndTime);
         
         const ctx = canvas.getContext('2d');
         const container = canvas.parentElement;
@@ -520,9 +524,22 @@ async function openFullscreenGraph(key, title) {
         ctx.fillStyle = '#f8f9fa';
         ctx.fillRect(0, 0, width, height);
         
+        // Handle empty data
+        if (visibleData.length === 0) {
+            ctx.fillStyle = '#7f8c8d';
+            ctx.font = '20px Segoe UI';
+            ctx.textAlign = 'center';
+            ctx.fillText('No data available for this time range', width / 2, height / 2);
+            fullscreenAnimationFrame = requestAnimationFrame(drawFullscreenGraph);
+            return;
+        }
+        
+        // Extract values for min/max calculation
+        const values = visibleData.map(d => d.value);
+        
         // Find min and max
-        const dataMin = Math.min(...data);
-        const dataMax = Math.max(...data);
+        const dataMin = Math.min(...values);
+        const dataMax = Math.max(...values);
         const dataRange = dataMax - dataMin || 1;
         
         // Apply Y-axis zoom by adjusting the visible range
@@ -563,10 +580,9 @@ async function openFullscreenGraph(key, title) {
             ctx.lineTo(x, padding + graphHeight);
             ctx.stroke();
             
-            // Time labels (seconds ago, accounting for scroll offset)
-            const dataIndex = Math.floor((i / numTimeLabels) * (pointsToShow - 1));
-            const pointsFromEnd = pointsToShow - dataIndex;
-            const secondsAgo = (pointsFromEnd * updateIntervalSec) + graphScrollOffset;
+            // Time labels - calculate actual time for this position
+            const timeAtPosition = viewStartTime + (i / numTimeLabels) * timeWindowSeconds;
+            const secondsAgo = now - timeAtPosition;
             ctx.fillStyle = '#2c3e50';
             ctx.font = '14px Segoe UI';
             ctx.textAlign = 'center';
@@ -587,16 +603,15 @@ async function openFullscreenGraph(key, title) {
         
         ctx.beginPath();
         let pathStarted = false;
-        data.forEach((value, index) => {
-            // Position points based on actual time within the target time window
-            // This makes the graph fill from left to right as data accumulates
-            const actualPointsInWindow = data.length;
-            const xPosition = (index / (targetPoints - 1 || 1)) * graphWidth; // Use target points for spacing
+        visibleData.forEach((dataPoint, index) => {
+            // Position points based on actual timestamp within the visible time window
+            const timeSinceStart = dataPoint.timestamp - viewStartTime;
+            const xPosition = (timeSinceStart / timeWindowSeconds) * graphWidth;
             const x = padding + xPosition;
-            const y = padding + graphHeight - ((value - min) / range) * graphHeight;
+            const y = padding + graphHeight - ((dataPoint.value - min) / range) * graphHeight;
             
             // Only draw points within visible range
-            if (y >= padding && y <= padding + graphHeight) {
+            if (y >= padding && y <= padding + graphHeight && x >= padding && x <= padding + graphWidth) {
                 if (!pathStarted) {
                     ctx.moveTo(x, y);
                     pathStarted = true;
@@ -621,13 +636,15 @@ async function openFullscreenGraph(key, title) {
         }
         
         // Draw current value marker (only when viewing live data)
-        if (data.length > 0 && graphScrollOffset === 0) {
-            const lastValue = data[data.length - 1];
-            const x = padding + graphWidth;
-            const y = padding + graphHeight - ((lastValue - min) / range) * graphHeight;
+        if (visibleData.length > 0 && graphScrollOffset === 0) {
+            const lastDataPoint = visibleData[visibleData.length - 1];
+            const timeSinceStart = lastDataPoint.timestamp - viewStartTime;
+            const xPosition = (timeSinceStart / timeWindowSeconds) * graphWidth;
+            const x = padding + xPosition;
+            const y = padding + graphHeight - ((lastDataPoint.value - min) / range) * graphHeight;
             
             // Only show marker if within visible range
-            if (y >= padding && y <= padding + graphHeight) {
+            if (y >= padding && y <= padding + graphHeight && x >= padding && x <= padding + graphWidth) {
                 ctx.fillStyle = '#e74c3c';
                 ctx.beginPath();
                 ctx.arc(x, y, 8, 0, Math.PI * 2);
@@ -637,7 +654,7 @@ async function openFullscreenGraph(key, title) {
                 ctx.fillStyle = '#2c3e50';
                 ctx.font = 'bold 20px Segoe UI';
                 ctx.textAlign = 'left';
-                const valueText = formatNumber(lastValue, 2);
+                const valueText = formatNumber(lastDataPoint.value, 2);
                 const textWidth = ctx.measureText(valueText).width;
                 
                 // Draw background for text
@@ -723,10 +740,11 @@ function handleTouchMove(e) {
         const deltaTime = deltaX * timePerPixel; // Direct 1:1 mapping
         const newOffset = Math.max(0, touchStartScrollOffset + deltaTime);
         
-        // Limit scrolling to available data
-        const allData = graphData[currentGraphKey] || [];
-        const targetPoints = Math.ceil(timeWindowSeconds / updateIntervalSec);
-        const maxOffset = Math.max(0, (allData.length - targetPoints) * updateIntervalSec);
+        // Limit scrolling to available data (use cached data)
+        const cachedData = graphDataCache[currentGraphKey] || [];
+        const oldestTime = cachedData.length > 0 ? cachedData[0].timestamp : 0;
+        const newestTime = cachedData.length > 0 ? cachedData[cachedData.length - 1].timestamp : Date.now() / 1000;
+        const maxOffset = Math.max(0, (Date.now() / 1000) - newestTime + (newestTime - oldestTime) - timeWindowSeconds);
         graphScrollOffset = Math.min(newOffset, maxOffset);
     }
 }
