@@ -397,7 +397,9 @@ def rotate_log_file():
     log_rows_written = 0
     
     # Write header
-    sensors = current_settings.get('sensors', DEFAULT_SENSORS)
+    sensors = current_settings.get('sensors', [])
+    if not sensors or len(sensors) == 0:
+        sensors = DEFAULT_SENSORS
     headers = ['timestamp', 'datetime'] + [s['id'] for s in sensors if s.get('enabled', True)]
     
     with open(current_log_file, 'w', newline='') as f:
@@ -428,7 +430,9 @@ def log_data_to_csv(data):
         log_rows_written = 0
         
         # Write header
-        sensors = current_settings.get('sensors', DEFAULT_SENSORS)
+        sensors = current_settings.get('sensors', [])
+        if not sensors or len(sensors) == 0:
+            sensors = DEFAULT_SENSORS
         headers = ['timestamp', 'datetime'] + [s['id'] for s in sensors if s.get('enabled', True)]
         
         with open(current_log_file, 'w', newline='') as f:
@@ -448,7 +452,9 @@ def log_data_to_csv(data):
     
     # Append data
     try:
-        sensors = current_settings.get('sensors', DEFAULT_SENSORS)
+        sensors = current_settings.get('sensors', [])
+        if not sensors or len(sensors) == 0:
+            sensors = DEFAULT_SENSORS
         enabled_sensor_ids = [s['id'] for s in sensors if s.get('enabled', True)]
         
         row = [
