@@ -218,8 +218,8 @@ function updateDisplay(data) {
         }
         graphDataCache[sensor.id].push({ timestamp: timestamp, value: value });
         
-        // Keep only last 2 hours of data in cache (14400 points at 500ms = 2 hours)
-        const MAX_CACHE_POINTS = 14400;
+        // Keep only last 2 hours of data in cache (36000 points at 200ms = 2 hours)
+        const MAX_CACHE_POINTS = 36000;
         if (graphDataCache[sensor.id].length > MAX_CACHE_POINTS) {
             graphDataCache[sensor.id].shift();
         }
@@ -306,7 +306,7 @@ const MAX_SPARKLINE_POINTS = 50;
 // Graph data cache - stores fetched data from server API
 // Data is lazy-loaded and cached when viewing graphs
 const graphDataCache = {}; // {sensorId: [{timestamp, value}, ...]}
-const UPDATE_INTERVAL_MS = 500; // Fixed at 500ms (2Hz)
+const UPDATE_INTERVAL_MS = 200; // Fixed at 200ms (5Hz)
 
 // Draw sparkline
 function drawSparkline(canvasId, data, color = '#3498db') {
@@ -677,7 +677,7 @@ async function openFullscreenGraph(key, title) {
         }
         
         // Draw current value marker (only when viewing live data)
-        if (visibleData.length > 0 && graphScrollOffset === 0) {
+        if (visibleData.length > 0 && graphScrollOffset < 0.1) {
             const lastDataPoint = visibleData[visibleData.length - 1];
             const timeSinceStart = lastDataPoint.timestamp - viewStartTime;
             const xPosition = (timeSinceStart / timeWindowSeconds) * graphWidth;

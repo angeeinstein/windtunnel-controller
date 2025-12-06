@@ -20,7 +20,7 @@ SETTINGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'settin
 # Database configuration
 DB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sensor_data.db')
 DATA_RETENTION_HOURS = 24  # Keep last 24 hours of data
-UPDATE_INTERVAL_MS = 500  # Fixed at 500ms (2Hz) for consistency
+UPDATE_INTERVAL_MS = 200  # Fixed at 200ms (5Hz) for consistency
 
 # Data logging directory (for CSV exports) - DISABLED, using database only
 # DATA_LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data_logs')
@@ -569,7 +569,7 @@ def get_directory_size_mb(directory):
 def background_data_updater():
     """
     Background thread to send data updates to all connected clients.
-    Fixed at 500ms (2Hz) intervals for database consistency.
+    Fixed at 200ms (5Hz) intervals for database consistency.
     All data transmitted in SI units.
     """
     global current_log_file
@@ -600,7 +600,7 @@ def background_data_updater():
             cleanup_old_data()
             last_cleanup = current_time
         
-        # Fixed update interval (500ms = 2Hz)
+        # Fixed update interval (200ms = 5Hz)
         time.sleep(UPDATE_INTERVAL_MS / 1000)
 
 @app.route('/')
