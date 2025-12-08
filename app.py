@@ -1226,11 +1226,24 @@ def test_sensor():
             # Try to read a value
             value = handler['read'](sensor_instance, config)
             
-            return jsonify({
-                'status': 'success',
-                'message': f'Sensor initialized successfully. Current reading: {value:.2f}',
-                'value': value
-            })
+            # Heuristic check: if value is exactly 0.0, sensor might not be connected
+            # (real sensors rarely read exactly 0.0, especially for temp/pressure)
+            hardware_detected = value != 0.0
+            
+            if hardware_detected:
+                return jsonify({
+                    'status': 'success',
+                    'message': f'✓ Sensor connected and working! Current reading: {value:.2f}',
+                    'value': value,
+                    'hardware_detected': True
+                })
+            else:
+                return jsonify({
+                    'status': 'warning',
+                    'message': f'⚠ Library works, but no hardware detected (reading: {value:.2f}). Check wiring and connections.',
+                    'value': value,
+                    'hardware_detected': False
+                })
         except Exception as init_error:
             return jsonify({
                 'status': 'error',

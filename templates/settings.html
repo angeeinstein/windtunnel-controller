@@ -1411,6 +1411,9 @@
                 if (result.status === 'success') {
                     showNotification('✅ Connection Successful', result.message || 'Hardware sensor is responding correctly.', 'success');
                     sensor.status = 'connected';
+                } else if (result.status === 'warning') {
+                    showNotification('⚠️ Library Only', result.message || 'Library initialized but no hardware detected.', 'warning');
+                    sensor.status = 'disconnected';
                 } else {
                     showNotification('❌ Connection Failed', result.message || 'Could not connect to hardware sensor.', 'error');
                     sensor.status = 'disconnected';
