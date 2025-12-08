@@ -134,6 +134,7 @@ init_database()
 DEFAULT_SETTINGS = {
     'updateInterval': UPDATE_INTERVAL_MS,  # Fixed at 500ms
     'darkMode': False,
+    'developerMode': False,
     'decimalPlaces': 2,
     'velocityUnit': 'ms',
     'temperatureUnit': 'c',
@@ -1037,13 +1038,22 @@ def get_sensor_types():
     """Get available sensor types and their configuration requirements."""
     # Add availability information to sensor types
     sensor_types_with_availability = {}
+    developer_mode = current_settings.get('developerMode', False)
+    
     for type_id, type_info in SENSOR_TYPES.items():
         sensor_types_with_availability[type_id] = type_info.copy()
-        # Mark hardware sensors as available/unavailable based on library presence
-        if type_info.get('category') == 'hardware':
+        
+        # In developer mode, all sensors are available
+        if developer_mode:
+            sensor_types_with_availability[type_id]['available'] = True
+        # Hide mock sensor in production mode
+        elif type_id == 'mock':
+            sensor_types_with_availability[type_id]['available'] = False
+        # Mark hardware sensors based on library presence
+        elif type_info.get('category') == 'hardware':
             sensor_types_with_availability[type_id]['available'] = available_sensor_libraries.get(type_id, False)
         else:
-            # Mock and calculated are always available
+            # Calculated sensors always available
             sensor_types_with_availability[type_id]['available'] = True
     
     return jsonify(sensor_types_with_availability)

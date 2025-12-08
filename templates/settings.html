@@ -634,6 +634,16 @@
 
             <div class="setting-row">
                 <div>
+                    <div class="setting-label">Developer Mode</div>
+                    <div class="setting-description">Enable mock sensors and make all hardware sensors available for testing (even without GPIO)</div>
+                </div>
+                <div class="setting-control">
+                    <div class="toggle-switch" id="developerMode"></div>
+                </div>
+            </div>
+
+            <div class="setting-row">
+                <div>
                     <div class="setting-label">Show Decimal Places</div>
                     <div class="setting-description">Number of decimal places for measurements</div>
                 </div>
@@ -831,6 +841,20 @@
         document.querySelectorAll('.toggle-switch').forEach(toggle => {
             toggle.addEventListener('click', function() {
                 this.classList.toggle('active');
+                
+                // If developer mode was toggled, refresh sensor types
+                if (this.id === 'developerMode') {
+                    // If sensor modal is open, reload sensor types
+                    if (document.getElementById('sensorModal').style.display !== 'none') {
+                        fetch('/api/sensor-types')
+                            .then(response => response.json())
+                            .then(types => {
+                                sensorTypes = types;
+                                renderSensorList();
+                            })
+                            .catch(error => console.error('Error reloading sensor types:', error));
+                    }
+                }
             });
         });
 
@@ -838,6 +862,7 @@
         function saveSettings() {
             const settings = {
                 darkMode: document.getElementById('darkMode').classList.contains('active'),
+                developerMode: document.getElementById('developerMode').classList.contains('active'),
                 decimalPlaces: parseInt(document.getElementById('decimalPlaces').value),
                 velocityUnit: document.getElementById('velocityUnit').value,
                 temperatureUnit: document.getElementById('temperatureUnit').value,
@@ -881,6 +906,7 @@
                         
                         // Clear all toggles first
                         document.getElementById('darkMode').classList.remove('active');
+                        document.getElementById('developerMode').classList.remove('active');
                         
                         // Update form values with reset settings
                         document.getElementById('decimalPlaces').value = settings.decimalPlaces;
@@ -890,6 +916,7 @@
                         
                         // Set toggles based on reset settings
                         if (settings.darkMode) document.getElementById('darkMode').classList.add('active');
+                        if (settings.developerMode) document.getElementById('developerMode').classList.add('active');
                     } else {
                         showNotification('Error', data.message, 'error');
                     }
@@ -1599,6 +1626,7 @@
                     
                     // Clear all toggles first
                     document.getElementById('darkMode').classList.remove('active');
+                    document.getElementById('developerMode').classList.remove('active');
                     
                     // Set form values
                     document.getElementById('decimalPlaces').value = settings.decimalPlaces || 2;
@@ -1608,6 +1636,7 @@
                     
                     // Set toggles based on settings
                     if (settings.darkMode) document.getElementById('darkMode').classList.add('active');
+                    if (settings.developerMode) document.getElementById('developerMode').classList.add('active');
                 })
                 .catch(error => {
                     console.error('Failed to load settings:', error);
