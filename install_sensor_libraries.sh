@@ -14,6 +14,18 @@ FAILED_PACKAGES=0
 PIP_CACHE_DIR="${HOME}/.cache/pip"
 mkdir -p "$PIP_CACHE_DIR"
 
+# Determine which pip to use (prefer venv if available)
+if [ -n "$VIRTUAL_ENV" ] && [ -f "$VIRTUAL_ENV/bin/pip" ]; then
+    PIP_CMD="$VIRTUAL_ENV/bin/pip"
+    echo "Using virtual environment pip: $PIP_CMD"
+elif [ -f "venv/bin/pip" ]; then
+    PIP_CMD="venv/bin/pip"
+    echo "Using local venv pip: $PIP_CMD"
+else
+    PIP_CMD="pip3"
+    echo "Using system pip3 (WARNING: venv not detected)"
+fi
+
 echo "Installing sensor libraries for hardware support..."
 echo ""
 
@@ -30,7 +42,7 @@ install_package() {
     
     while [ $retry_count -lt $max_retries ]; do
         # Try to install, caching packages for offline use
-        if pip3 install --cache-dir="$PIP_CACHE_DIR" "$package_name" > /dev/null 2>&1; then
+        if $PIP_CMD install --cache-dir="$PIP_CACHE_DIR" "$package_name" > /dev/null 2>&1; then
             echo "✓ Success"
             SUCCESSFUL_PACKAGES=$((SUCCESSFUL_PACKAGES + 1))
             return 0
@@ -106,7 +118,7 @@ echo ""
 echo "Installing sensor libraries..."
 
 # Upgrade pip first
-pip3 install --upgrade pip > /dev/null 2>&1 || true
+$PIP_CMD install --upgrade pip > /dev/null 2>&1 || true
 
 # I2C Sensors
 install_package "adafruit-circuitpython-bmp280" "BMP280 Pressure/Temp sensor"

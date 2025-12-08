@@ -6,6 +6,7 @@ import json
 import os
 import re
 import csv
+import sys
 import sqlite3
 from datetime import datetime
 from threading import Lock, Thread
@@ -273,13 +274,18 @@ def check_sensor_library_availability():
     
     for sensor_type, module_name in library_checks.items():
         try:
-            importlib.import_module(module_name)
+            # Invalidate import cache to force fresh check
+            if module_name in sys.modules:
+                importlib.reload(sys.modules[module_name])
+            else:
+                importlib.import_module(module_name)
             available_sensor_libraries[sensor_type] = True
             print(f"✓ {sensor_type} library available")
-        except ImportError:
+        except (ImportError, ModuleNotFoundError):
             available_sensor_libraries[sensor_type] = False
             print(f"✗ {sensor_type} library not available")
     
+    print(f"Library check complete: {sum(available_sensor_libraries.values())}/{len(available_sensor_libraries)} available")
     return available_sensor_libraries
 
 # Check sensor library availability at startup
