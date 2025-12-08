@@ -3,7 +3,7 @@
 # Run this during initial setup on Raspberry Pi
 # Robust version with error handling and graceful degradation
 
-set -e  # Exit on error in critical sections
+# NOTE: Do NOT use 'set -e' - we want to continue on non-critical failures
 
 # Counters for summary
 TOTAL_PACKAGES=0
@@ -110,9 +110,15 @@ done
 
 # Enable I2C, SPI, and 1-Wire interfaces
 echo ""
-enable_interface "do_i2c" "I2C interface"
-enable_interface "do_spi" "SPI interface"
-enable_interface "do_onewire" "1-Wire interface"
+if command -v raspi-config &> /dev/null; then
+    echo "Enabling hardware interfaces..."
+    enable_interface "do_i2c" "I2C interface"
+    enable_interface "do_spi" "SPI interface"
+    enable_interface "do_onewire" "1-Wire interface"
+else
+    echo "⚠ Not on Raspberry Pi - hardware interface configuration skipped"
+    echo "  (Sensor libraries will still be installed)"
+fi
 
 echo ""
 echo "Installing sensor libraries..."
@@ -162,11 +168,14 @@ if [ $SUCCESSFUL_PACKAGES -gt 0 ]; then
     if command -v raspi-config &> /dev/null; then
         echo "ℹ Hardware interfaces configured (reboot required)"
     fi
+    
+    exit 0
 else
-    echo "✗ No sensor libraries could be installed"
+    echo "⚠ No sensor libraries could be installed"
+    echo "  Check internet connection or package availability"
     echo "  Hardware sensors will not be available"
     echo "  Mock and calculated sensors will still work"
-    exit 1
+    exit 0
 fi
 
 echo ""
