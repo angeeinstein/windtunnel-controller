@@ -1601,24 +1601,15 @@ def wifi_connect():
 def internet_check():
     """Check internet connectivity."""
     try:
-        import subprocess
-        import platform
+        import socket
         
-        # Ping a reliable server with platform-specific flags
-        system = platform.system()
-        if system == 'Windows':
-            # Windows: -n count, -w timeout_ms
-            result = subprocess.run(['ping', '-n', '1', '-w', '2000', '8.8.8.8'], 
-                                  capture_output=True, timeout=5)
-        else:
-            # Linux/Unix: -c count, -W timeout_sec
-            result = subprocess.run(['ping', '-c', '1', '-W', '2', '8.8.8.8'], 
-                                  capture_output=True, timeout=5)
-        
-        if result.returncode == 0:
-            return jsonify({'connected': True, 'message': 'Internet connection active'})
-        else:
-            return jsonify({'connected': False, 'message': 'No internet connection'})
+        # Try to connect to Google's DNS server
+        socket.setdefaulttimeout(3)
+        socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect(("8.8.8.8", 53))
+        return jsonify({'connected': True, 'message': 'Internet connection active'})
+    except socket.error as e:
+        print(f"Internet check failed: {e}")
+        return jsonify({'connected': False, 'message': 'No internet connection'})
     except Exception as e:
         print(f"Error checking internet: {e}")
         return jsonify({'connected': False, 'message': 'Connection check failed'})
