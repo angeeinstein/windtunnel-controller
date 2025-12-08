@@ -1602,10 +1602,18 @@ def internet_check():
     """Check internet connectivity."""
     try:
         import subprocess
+        import platform
         
-        # Ping a reliable server
-        result = subprocess.run(['ping', '-c', '1', '-W', '2', '8.8.8.8'], 
-                              capture_output=True, timeout=5)
+        # Ping a reliable server with platform-specific flags
+        system = platform.system()
+        if system == 'Windows':
+            # Windows: -n count, -w timeout_ms
+            result = subprocess.run(['ping', '-n', '1', '-w', '2000', '8.8.8.8'], 
+                                  capture_output=True, timeout=5)
+        else:
+            # Linux/Unix: -c count, -W timeout_sec
+            result = subprocess.run(['ping', '-c', '1', '-W', '2', '8.8.8.8'], 
+                                  capture_output=True, timeout=5)
         
         if result.returncode == 0:
             return jsonify({'connected': True, 'message': 'Internet connection active'})
