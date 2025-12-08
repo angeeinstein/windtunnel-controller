@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Settings - Wind Tunnel Control System</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <style>
@@ -648,7 +648,7 @@
                     <div class="setting-description">Number of decimal places for measurements</div>
                 </div>
                 <div class="setting-control">
-                    <input type="number" class="setting-input" value="2" min="0" max="5" id="decimalPlaces">
+                    <input type="number" inputmode="numeric" class="setting-input" value="2" min="0" max="5" id="decimalPlaces">
                 </div>
             </div>
         </div>
@@ -696,7 +696,7 @@
                     <div class="setting-description">Custom name for this wind tunnel</div>
                 </div>
                 <div class="setting-control">
-                    <input type="text" class="setting-input" value="Wind Tunnel Alpha" id="systemName" style="min-width: 250px;">
+                    <input type="text" inputmode="text" class="setting-input" value="Wind Tunnel Alpha" id="systemName" style="min-width: 250px;">
                 </div>
             </div>
 
@@ -973,11 +973,11 @@
                     <div class="sensor-fields">
                         <div class="sensor-field">
                             <label>Sensor ID (for formulas)</label>
-                            <input type="text" value="${sensor.id}" onchange="updateSensor(${index}, 'id', this.value); renderSensorList();" placeholder="e.g., lift, temp1">
+                            <input type="text" inputmode="text" value="${sensor.id}" onchange="updateSensor(${index}, 'id', this.value); renderSensorList();" placeholder="e.g., lift, temp1">
                         </div>
                         <div class="sensor-field">
                             <label>Sensor Name</label>
-                            <input type="text" value="${sensor.name}" onchange="updateSensor(${index}, 'name', this.value)">
+                            <input type="text" inputmode="text" value="${sensor.name}" onchange="updateSensor(${index}, 'name', this.value)">
                         </div>
                         <div class="sensor-field">
                             <label>Sensor Type</label>
@@ -993,7 +993,7 @@
                         </div>
                         <div class="sensor-field">
                             <label>Unit</label>
-                            <input type="text" value="${sensor.unit || ''}" onchange="updateSensor(${index}, 'unit', this.value)">
+                            <input type="text" inputmode="text" value="${sensor.unit || ''}" onchange="updateSensor(${index}, 'unit', this.value)">
                         </div>
                         <div class="sensor-field">
                             <label>Graph Color</label>
@@ -1333,9 +1333,9 @@
                 const min = field.min !== undefined ? `min="${field.min}"` : '';
                 const max = field.max !== undefined ? `max="${field.max}"` : '';
                 const step = field.step !== undefined ? `step="${field.step}"` : 'step="any"';
-                html += `<input type="number" id="hw_${field.name}" value="${value}" ${min} ${max} ${step} style="width: 100%; padding: 10px; border: 2px solid var(--border-color); border-radius: 6px; font-size: 1rem;">`;
+                html += `<input type="number" inputmode="decimal" id="hw_${field.name}" value="${value}" ${min} ${max} ${step} style="width: 100%; padding: 10px; border: 2px solid var(--border-color); border-radius: 6px; font-size: 1rem;">`;
             } else {
-                html += `<input type="text" id="hw_${field.name}" value="${value}" placeholder="${field.placeholder || ''}" style="width: 100%; padding: 10px; border: 2px solid var(--border-color); border-radius: 6px; font-size: 1rem;">`;
+                html += `<input type="text" inputmode="text" id="hw_${field.name}" value="${value}" placeholder="${field.placeholder || ''}" style="width: 100%; padding: 10px; border: 2px solid var(--border-color); border-radius: 6px; font-size: 1rem;">`;
             }
             
             html += `</div>`;
