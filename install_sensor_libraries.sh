@@ -1,0 +1,160 @@
+#!/bin/bash
+# Install all sensor libraries for wind tunnel controller
+# Run this during initial setup on Raspberry Pi
+# Robust version with error handling and graceful degradation
+
+set -e  # Exit on error in critical sections
+
+# Counters for summary
+TOTAL_PACKAGES=0
+SUCCESSFUL_PACKAGES=0
+FAILED_PACKAGES=0
+
+# Determine pip cache directory
+PIP_CACHE_DIR="${HOME}/.cache/pip"
+mkdir -p "$PIP_CACHE_DIR"
+
+echo "Installing sensor libraries for hardware support..."
+echo ""
+
+# Function to safely install a package with retries
+install_package() {
+    local package_name=$1
+    local description=$2
+    local max_retries=3
+    local retry_count=0
+    
+    TOTAL_PACKAGES=$((TOTAL_PACKAGES + 1))
+    
+    echo -n "Installing ${description}... "
+    
+    while [ $retry_count -lt $max_retries ]; do
+        # Try to install, caching packages for offline use
+        if pip3 install --cache-dir="$PIP_CACHE_DIR" "$package_name" > /dev/null 2>&1; then
+            echo "✓ Success"
+            SUCCESSFUL_PACKAGES=$((SUCCESSFUL_PACKAGES + 1))
+            return 0
+        fi
+        retry_count=$((retry_count + 1))
+        if [ $retry_count -lt $max_retries ]; then
+            sleep 1
+        fi
+    done
+    
+    echo "⚠ Skipped (optional)"
+    FAILED_PACKAGES=$((FAILED_PACKAGES + 1))
+    return 1
+}
+
+# Function to enable hardware interface safely
+enable_interface() {
+    local interface=$1
+    local interface_name=$2
+    
+    if command -v raspi-config &> /dev/null; then
+        echo -n "Enabling ${interface_name}... "
+        if sudo raspi-config nonint "$interface" 0 &> /dev/null; then
+            echo "✓ Enabled"
+            return 0
+        else
+            echo "⚠ Skipped"
+            return 1
+        fi
+    else
+        echo "⚠ Not on Raspberry Pi - skipping ${interface_name} configuration"
+        return 1
+    fi
+}
+
+# Update package lists (critical)
+echo "Updating package lists..."
+if sudo apt-get update > /dev/null 2>&1; then
+    echo "✓ Package lists updated"
+else
+    echo "⚠ Could not update package lists (continuing anyway)"
+fi
+
+# Install system dependencies (try each individually)
+echo ""
+echo "Installing system dependencies..."
+
+SYSTEM_PACKAGES=(
+    "python3-pip:Python package installer"
+    "python3-smbus:I2C interface"
+    "i2c-tools:I2C utilities"
+    "python3-dev:Python headers"
+    "build-essential:Build tools"
+)
+
+for pkg_entry in "${SYSTEM_PACKAGES[@]}"; do
+    IFS=':' read -r pkg desc <<< "$pkg_entry"
+    echo -n "Installing ${desc}... "
+    if sudo apt-get install -y "$pkg" > /dev/null 2>&1; then
+        echo "✓"
+    else
+        echo "⚠ Skipped"
+    fi
+done
+
+# Enable I2C, SPI, and 1-Wire interfaces
+echo ""
+enable_interface "do_i2c" "I2C interface"
+enable_interface "do_spi" "SPI interface"
+enable_interface "do_onewire" "1-Wire interface"
+
+echo ""
+echo "Installing sensor libraries..."
+
+# Upgrade pip first
+pip3 install --upgrade pip > /dev/null 2>&1 || true
+
+# I2C Sensors
+install_package "adafruit-circuitpython-bmp280" "BMP280 Pressure/Temp sensor"
+install_package "adafruit-circuitpython-ads1x15" "ADS1115 16-bit ADC"
+install_package "sensirion-i2c-driver" "Sensirion I2C driver"
+install_package "sensirion-i2c-sdp" "SDP811 differential pressure"
+install_package "adafruit-circuitpython-mpu6050" "MPU6050 gyro/accelerometer"
+
+# SPI Sensors
+install_package "hx711" "HX711 load cell amplifier"
+install_package "adafruit-circuitpython-mcp3xxx" "MCP3008 8-channel ADC"
+install_package "adafruit-circuitpython-max31855" "MAX31855 thermocouple"
+
+# 1-Wire / GPIO Sensors
+install_package "w1thermsensor" "DS18B20 temperature sensor"
+install_package "RPi.GPIO" "RPi GPIO library"
+install_package "adafruit-circuitpython-dht" "DHT22 temp/humidity"
+
+# Base libraries
+install_package "adafruit-blinka" "CircuitPython Blinka layer"
+install_package "adafruit-platformdetect" "Platform detection"
+
+echo ""
+echo "Sensor Library Installation Complete"
+echo "-------------------------------------"
+echo "Total: ${TOTAL_PACKAGES} packages"
+echo "✓ Installed: ${SUCCESSFUL_PACKAGES}"
+if [ $FAILED_PACKAGES -gt 0 ]; then
+    echo "⚠ Skipped: ${FAILED_PACKAGES} (optional packages)"
+fi
+echo ""
+
+if [ $SUCCESSFUL_PACKAGES -gt 0 ]; then
+    echo "✓ Hardware sensor support is ready!"
+    
+    if [ $FAILED_PACKAGES -gt 0 ]; then
+        echo "⚠ Some optional libraries were skipped - this is normal"
+        echo "  Only sensors you actually connect will be used"
+    fi
+    
+    if command -v raspi-config &> /dev/null; then
+        echo "ℹ Hardware interfaces configured (reboot required)"
+    fi
+else
+    echo "✗ No sensor libraries could be installed"
+    echo "  Hardware sensors will not be available"
+    echo "  Mock and calculated sensors will still work"
+    exit 1
+fi
+
+echo ""

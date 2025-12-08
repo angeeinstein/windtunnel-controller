@@ -242,6 +242,38 @@ install_python_packages() {
     print_success "Python dependencies installed"
 }
 
+# Install sensor libraries
+install_sensor_libraries() {
+    print_step "Installing sensor libraries..."
+    
+    cd "$INSTALL_DIR" || exit 1
+    
+    # Check if sensor library script exists
+    if [[ -f "install_sensor_libraries.sh" ]]; then
+        print_info "Running sensor library installation..."
+        chmod +x install_sensor_libraries.sh
+        
+        # Run the installation script
+        if bash install_sensor_libraries.sh; then
+            print_success "Sensor libraries installed successfully"
+        else
+            local exit_code=$?
+            if [ $exit_code -eq 1 ]; then
+                print_error "Sensor library installation failed completely"
+                print_warning "The system will still work, but hardware sensors won't be available"
+                print_info "You can retry later by running: bash install_sensor_libraries.sh"
+            else
+                print_warning "Some sensor libraries may not have installed"
+                print_info "The system will work with available sensors"
+            fi
+        fi
+    else
+        print_warning "Sensor library script not found, skipping..."
+        print_info "Hardware sensors will not be available"
+        print_info "Mock and calculated sensors will still work"
+    fi
+}
+
 # Create systemd service
 create_service() {
     print_step "Creating systemd service..."
@@ -527,6 +559,7 @@ main() {
             update_repository
             setup_venv
             install_python_packages
+            install_sensor_libraries
             create_service
             enable_service
             show_completion_info
@@ -536,6 +569,7 @@ main() {
             clone_repository
             setup_venv
             install_python_packages
+            install_sensor_libraries
             create_service
             enable_service
             configure_firewall
@@ -547,6 +581,7 @@ main() {
         clone_repository
         setup_venv
         install_python_packages
+        install_sensor_libraries
         create_service
         enable_service
         configure_firewall
@@ -588,7 +623,10 @@ if [[ "$1" == "auto-update" ]] || [[ "$1" == "--auto-update" ]]; then
     echo "Step 3: Installing Python packages..."
     install_python_packages
     
-    echo "Step 4: Updating service configuration..."
+    echo "Step 4: Installing sensor libraries..."
+    install_sensor_libraries
+    
+    echo "Step 5: Updating service configuration..."
     update_service_file
     
     print_success "Update completed successfully!"

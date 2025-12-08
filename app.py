@@ -164,35 +164,436 @@ SENSOR_TYPES = {
             {'name': 'formula', 'label': 'Formula (use sensor IDs)', 'type': 'text', 'placeholder': 'e.g., lift / drag'}
         ]
     },
-    'gpio_analog': {
-        'name': 'GPIO Analog Input',
+    'HX711': {
+        'name': 'HX711 Load Cell Amplifier',
+        'category': 'hardware',
+        'description': 'For measuring force/weight with load cells',
         'fields': [
-            {'name': 'pin', 'label': 'GPIO Pin', 'type': 'number', 'placeholder': 'e.g., 17'}
+            {'name': 'dout_pin', 'label': 'DOUT Pin (BCM)', 'type': 'number', 'default': 5, 'min': 2, 'max': 27},
+            {'name': 'pd_sck_pin', 'label': 'PD_SCK Pin (BCM)', 'type': 'number', 'default': 6, 'min': 2, 'max': 27},
+            {'name': 'channel', 'label': 'Channel & Gain', 'type': 'select', 'options': ['A-128', 'A-64', 'B-32'], 'default': 'A-128'},
+            {'name': 'reference_unit', 'label': 'Calibration Factor', 'type': 'number', 'default': 1, 'step': 0.1},
+            {'name': 'offset', 'label': 'Zero Offset', 'type': 'number', 'default': 0}
         ]
     },
-    'i2c': {
-        'name': 'I2C Sensor',
+    'ADS1115': {
+        'name': 'ADS1115 16-bit ADC',
+        'category': 'hardware',
+        'description': 'Precision analog-to-digital converter',
         'fields': [
-            {'name': 'address', 'label': 'I2C Address (hex)', 'type': 'text', 'placeholder': 'e.g., 0x48'},
-            {'name': 'bus', 'label': 'I2C Bus', 'type': 'number', 'placeholder': 'e.g., 1'}
+            {'name': 'address', 'label': 'I2C Address', 'type': 'select', 'options': ['0x48', '0x49', '0x4A', '0x4B'], 'default': '0x48'},
+            {'name': 'channel', 'label': 'Channel', 'type': 'select', 'options': ['0', '1', '2', '3'], 'default': '0'},
+            {'name': 'gain', 'label': 'Gain', 'type': 'select', 'options': ['2/3', '1', '2', '4', '8', '16'], 'default': '1', 
+             'description': '2/3=±6.144V, 1=±4.096V, 2=±2.048V, 4=±1.024V, 8=±0.512V, 16=±0.256V'},
+            {'name': 'data_rate', 'label': 'Sample Rate (SPS)', 'type': 'select', 'options': ['8', '16', '32', '64', '128', '250', '475', '860'], 'default': '128'}
         ]
     },
-    'spi': {
-        'name': 'SPI Sensor',
+    'BMP280': {
+        'name': 'BMP280 Pressure/Temperature',
+        'category': 'hardware',
+        'description': 'Barometric pressure and temperature sensor',
         'fields': [
-            {'name': 'bus', 'label': 'SPI Bus', 'type': 'number', 'placeholder': 'e.g., 0'},
-            {'name': 'device', 'label': 'SPI Device', 'type': 'number', 'placeholder': 'e.g., 0'},
-            {'name': 'cs_pin', 'label': 'Chip Select Pin', 'type': 'number', 'placeholder': 'e.g., 8'}
+            {'name': 'address', 'label': 'I2C Address', 'type': 'select', 'options': ['0x76', '0x77'], 'default': '0x76'},
+            {'name': 'sea_level_pressure', 'label': 'Sea Level Pressure (hPa)', 'type': 'number', 'default': 1013.25, 'step': 0.01}
         ]
     },
-    'uart': {
-        'name': 'UART/Serial Sensor',
+    'SDP811': {
+        'name': 'Sensirion SDP811-500Pa',
+        'category': 'hardware',
+        'description': 'Differential pressure sensor for pitot tube airspeed',
         'fields': [
-            {'name': 'port', 'label': 'Serial Port', 'type': 'text', 'placeholder': 'e.g., /dev/ttyUSB0'},
-            {'name': 'baudrate', 'label': 'Baud Rate', 'type': 'number', 'placeholder': 'e.g., 9600'}
+            {'name': 'address', 'label': 'I2C Address', 'type': 'select', 'options': ['0x25', '0x26'], 'default': '0x25'},
+            {'name': 'averaging', 'label': 'Averaging Mode', 'type': 'select', 
+             'options': ['none', 'until_stable', 'update_2s'], 'default': 'until_stable',
+             'description': 'Temperature compensation averaging'},
+            {'name': 'altitude', 'label': 'Altitude (m)', 'type': 'number', 'default': 0,
+             'description': 'For accurate air density calculation'}
+        ]
+    },
+    'DHT22': {
+        'name': 'DHT22 Temperature/Humidity',
+        'category': 'hardware',
+        'description': 'Digital temperature and humidity sensor',
+        'fields': [
+            {'name': 'pin', 'label': 'Data Pin (BCM)', 'type': 'number', 'default': 4, 'min': 2, 'max': 27}
+        ]
+    },
+    'DS18B20': {
+        'name': 'DS18B20 Temperature',
+        'category': 'hardware',
+        'description': 'High-precision digital temperature sensor',
+        'fields': [
+            {'name': 'address', 'label': 'Device Address', 'type': 'text', 'placeholder': 'Auto-detect or enter address',
+             'description': 'Leave empty to auto-detect first sensor'}
+        ]
+    },
+    'MCP3008': {
+        'name': 'MCP3008 8-channel ADC',
+        'category': 'hardware',
+        'description': '10-bit analog-to-digital converter',
+        'fields': [
+            {'name': 'channel', 'label': 'Channel', 'type': 'select', 'options': ['0', '1', '2', '3', '4', '5', '6', '7'], 'default': '0'},
+            {'name': 'vref', 'label': 'Reference Voltage', 'type': 'number', 'default': 3.3, 'step': 0.1}
+        ]
+    },
+    'MPU6050': {
+        'name': 'MPU6050 Gyro/Accelerometer',
+        'category': 'hardware',
+        'description': '6-axis motion tracking sensor',
+        'fields': [
+            {'name': 'address', 'label': 'I2C Address', 'type': 'select', 'options': ['0x68', '0x69'], 'default': '0x68'},
+            {'name': 'output', 'label': 'Output Value', 'type': 'select', 
+             'options': ['accel_x', 'accel_y', 'accel_z', 'gyro_x', 'gyro_y', 'gyro_z', 'temperature'], 
+             'default': 'accel_x'}
         ]
     }
 }
+
+# Sensor initialization cache and handlers
+sensor_instances = {}  # Cache initialized sensors {sensor_id: instance}
+available_sensor_libraries = {}  # Track which libraries are installed
+import importlib
+import math
+
+# Function to check which sensor libraries are available
+def check_sensor_library_availability():
+    """Check which sensor hardware libraries are installed and working."""
+    global available_sensor_libraries
+    
+    library_checks = {
+        'HX711': 'hx711',
+        'ADS1115': 'adafruit_ads1x15.ads1115',
+        'BMP280': 'adafruit_bmp280',
+        'SDP811': 'sensirion_i2c_sdp',
+        'DHT22': 'adafruit_dht',
+        'DS18B20': 'w1thermsensor',
+        'MCP3008': 'adafruit_mcp3xxx.mcp3008',
+        'MPU6050': 'adafruit_mpu6050'
+    }
+    
+    for sensor_type, module_name in library_checks.items():
+        try:
+            importlib.import_module(module_name)
+            available_sensor_libraries[sensor_type] = True
+            print(f"✓ {sensor_type} library available")
+        except ImportError:
+            available_sensor_libraries[sensor_type] = False
+            print(f"✗ {sensor_type} library not available")
+    
+    return available_sensor_libraries
+
+# Check sensor library availability at startup
+check_sensor_library_availability()
+
+# Sensor handler functions
+def init_hx711(config):
+    """Initialize HX711 load cell amplifier"""
+    try:
+        from hx711 import HX711
+        
+        hx = HX711(
+            dout_pin=int(config.get('dout_pin', 5)),
+            pd_sck_pin=int(config.get('pd_sck_pin', 6))
+        )
+        
+        hx.set_reference_unit(float(config.get('reference_unit', 1)))
+        hx.set_offset(int(config.get('offset', 0)))
+        
+        # Set channel/gain
+        channel_map = {'A-128': ('A', 128), 'A-64': ('A', 64), 'B-32': ('B', 32)}
+        channel, gain = channel_map.get(config.get('channel', 'A-128'), ('A', 128))
+        hx.select_channel(channel)
+        hx.set_gain(gain)
+        
+        hx.reset()
+        print(f"HX711 initialized on DOUT={config.get('dout_pin')}, SCK={config.get('pd_sck_pin')}")
+        return hx
+    except Exception as e:
+        print(f"Error initializing HX711: {e}")
+        return None
+
+def read_hx711(sensor, config):
+    """Read force from HX711"""
+    try:
+        if sensor is None:
+            return 0
+        value = sensor.get_weight_mean(3)  # Average 3 readings
+        return value if value is not None else 0
+    except Exception as e:
+        print(f"Error reading HX711: {e}")
+        return 0
+
+def init_ads1115(config):
+    """Initialize ADS1115 ADC"""
+    try:
+        import board
+        import busio
+        import adafruit_ads1x15.ads1115 as ADS
+        from adafruit_ads1x15.analog_in import AnalogIn
+        
+        i2c = busio.I2C(board.SCL, board.SDA)
+        address = int(config.get('address', '0x48'), 16)
+        ads = ADS.ADS1115(i2c, address=address)
+        
+        # Set gain
+        gain_map = {'2/3': 2/3, '1': 1, '2': 2, '4': 4, '8': 8, '16': 16}
+        ads.gain = gain_map.get(config.get('gain', '1'), 1)
+        
+        # Set data rate
+        ads.data_rate = int(config.get('data_rate', '128'))
+        
+        # Create channel
+        channel_num = int(config.get('channel', '0'))
+        chan = AnalogIn(ads, channel_num)
+        
+        print(f"ADS1115 initialized at {config.get('address')} channel {channel_num}")
+        return {'ads': ads, 'channel': chan}
+    except Exception as e:
+        print(f"Error initializing ADS1115: {e}")
+        return None
+
+def read_ads1115(sensor, config):
+    """Read voltage from ADS1115"""
+    try:
+        if sensor is None:
+            return 0
+        return sensor['channel'].voltage
+    except Exception as e:
+        print(f"Error reading ADS1115: {e}")
+        return 0
+
+def init_bmp280(config):
+    """Initialize BMP280 pressure/temperature sensor"""
+    try:
+        import board
+        import busio
+        import adafruit_bmp280
+        
+        i2c = busio.I2C(board.SCL, board.SDA)
+        address = int(config.get('address', '0x76'), 16)
+        sensor = adafruit_bmp280.Adafruit_BMP280_I2C(i2c, address)
+        
+        sensor.sea_level_pressure = float(config.get('sea_level_pressure', 1013.25))
+        
+        print(f"BMP280 initialized at {config.get('address')}")
+        return sensor
+    except Exception as e:
+        print(f"Error initializing BMP280: {e}")
+        return None
+
+def read_bmp280(sensor, config, output='pressure'):
+    """Read pressure or temperature from BMP280"""
+    try:
+        if sensor is None:
+            return 0
+        if output == 'temperature':
+            return sensor.temperature
+        elif output == 'altitude':
+            return sensor.altitude
+        else:  # pressure
+            return sensor.pressure
+    except Exception as e:
+        print(f"Error reading BMP280: {e}")
+        return 0
+
+def init_sdp811(config):
+    """Initialize SDP811 differential pressure sensor"""
+    try:
+        from sensirion_i2c_driver import LinuxI2cTransceiver, I2cConnection
+        from sensirion_i2c_sdp import Sdp8xxI2cDevice
+        
+        i2c_transceiver = LinuxI2cTransceiver('/dev/i2c-1')
+        i2c_connection = I2cConnection(i2c_transceiver)
+        
+        address = int(config.get('address', '0x25'), 16)
+        sensor = Sdp8xxI2cDevice(i2c_connection, slave_address=address)
+        
+        # Start measurement with averaging mode
+        averaging = config.get('averaging', 'until_stable')
+        if averaging == 'until_stable':
+            sensor.start_continuous_measurement_with_averaging()
+        else:
+            sensor.start_continuous_measurement()
+        
+        print(f"SDP811 initialized at {config.get('address')}")
+        return {'sensor': sensor, 'altitude': float(config.get('altitude', 0))}
+    except Exception as e:
+        print(f"Error initializing SDP811: {e}")
+        return None
+
+def read_sdp811(sensor_data, config, output='airspeed'):
+    """Read differential pressure or calculate airspeed from SDP811"""
+    try:
+        if sensor_data is None:
+            return 0
+        
+        sensor = sensor_data['sensor']
+        dp_pa, temp_c = sensor.read_measurement()
+        
+        if output == 'differential_pressure':
+            return dp_pa
+        elif output == 'temperature':
+            return temp_c
+        else:  # airspeed - calculate from differential pressure
+            # Air density calculation
+            altitude = sensor_data.get('altitude', 0)
+            temp_k = temp_c + 273.15
+            pressure_pa = 101325 * (1 - 0.0065 * altitude / 288.15) ** 5.255
+            rho = pressure_pa / (287.05 * temp_k)  # kg/m³
+            
+            # Airspeed from Bernoulli equation: v = sqrt(2*dP/rho)
+            if dp_pa < 0:
+                return -math.sqrt(abs(2 * dp_pa / rho))
+            return math.sqrt(2 * dp_pa / rho)
+    except Exception as e:
+        print(f"Error reading SDP811: {e}")
+        return 0
+
+def init_dht22(config):
+    """Initialize DHT22 temperature/humidity sensor"""
+    try:
+        import adafruit_dht
+        import board
+        
+        pin_num = int(config.get('pin', 4))
+        pin = getattr(board, f'D{pin_num}')
+        sensor = adafruit_dht.DHT22(pin)
+        
+        print(f"DHT22 initialized on pin {pin_num}")
+        return sensor
+    except Exception as e:
+        print(f"Error initializing DHT22: {e}")
+        return None
+
+def read_dht22(sensor, config, output='temperature'):
+    """Read temperature or humidity from DHT22"""
+    try:
+        if sensor is None:
+            return 0
+        if output == 'humidity':
+            return sensor.humidity
+        else:  # temperature
+            return sensor.temperature
+    except Exception as e:
+        print(f"Error reading DHT22: {e}")
+        return 0
+
+def init_ds18b20(config):
+    """Initialize DS18B20 temperature sensor"""
+    try:
+        from w1thermsensor import W1ThermSensor, Unit
+        
+        address = config.get('address', '').strip()
+        if address:
+            sensor = W1ThermSensor(sensor_id=address)
+        else:
+            sensor = W1ThermSensor()  # Auto-detect first sensor
+        
+        print(f"DS18B20 initialized: {sensor.id}")
+        return sensor
+    except Exception as e:
+        print(f"Error initializing DS18B20: {e}")
+        return None
+
+def read_ds18b20(sensor, config):
+    """Read temperature from DS18B20"""
+    try:
+        if sensor is None:
+            return 0
+        from w1thermsensor import Unit
+        return sensor.get_temperature(Unit.DEGREES_C)
+    except Exception as e:
+        print(f"Error reading DS18B20: {e}")
+        return 0
+
+def init_mcp3008(config):
+    """Initialize MCP3008 ADC"""
+    try:
+        import busio
+        import digitalio
+        import board
+        import adafruit_mcp3xxx.mcp3008 as MCP
+        from adafruit_mcp3xxx.analog_in import AnalogIn
+        
+        spi = busio.SPI(clock=board.SCK, MISO=board.MISO, MOSI=board.MOSI)
+        cs = digitalio.DigitalInOut(board.CE0)
+        mcp = MCP.MCP3008(spi, cs)
+        
+        channel_num = int(config.get('channel', '0'))
+        chan = AnalogIn(mcp, channel_num)
+        
+        print(f"MCP3008 initialized on channel {channel_num}")
+        return {'mcp': mcp, 'channel': chan, 'vref': float(config.get('vref', 3.3))}
+    except Exception as e:
+        print(f"Error initializing MCP3008: {e}")
+        return None
+
+def read_mcp3008(sensor, config):
+    """Read voltage from MCP3008"""
+    try:
+        if sensor is None:
+            return 0
+        return sensor['channel'].voltage
+    except Exception as e:
+        print(f"Error reading MCP3008: {e}")
+        return 0
+
+def init_mpu6050(config):
+    """Initialize MPU6050 gyro/accelerometer"""
+    try:
+        import board
+        import busio
+        import adafruit_mpu6050
+        
+        i2c = busio.I2C(board.SCL, board.SDA)
+        address = int(config.get('address', '0x68'), 16)
+        sensor = adafruit_mpu6050.MPU6050(i2c, address)
+        
+        print(f"MPU6050 initialized at {config.get('address')}")
+        return sensor
+    except Exception as e:
+        print(f"Error initializing MPU6050: {e}")
+        return None
+
+def read_mpu6050(sensor, config):
+    """Read value from MPU6050"""
+    try:
+        if sensor is None:
+            return 0
+        
+        output = config.get('output', 'accel_x')
+        
+        if output == 'accel_x':
+            return sensor.acceleration[0]
+        elif output == 'accel_y':
+            return sensor.acceleration[1]
+        elif output == 'accel_z':
+            return sensor.acceleration[2]
+        elif output == 'gyro_x':
+            return sensor.gyro[0]
+        elif output == 'gyro_y':
+            return sensor.gyro[1]
+        elif output == 'gyro_z':
+            return sensor.gyro[2]
+        elif output == 'temperature':
+            return sensor.temperature
+        return 0
+    except Exception as e:
+        print(f"Error reading MPU6050: {e}")
+        return 0
+
+# Sensor handler registry
+SENSOR_HANDLERS = {
+    'HX711': {'init': init_hx711, 'read': read_hx711},
+    'ADS1115': {'init': init_ads1115, 'read': read_ads1115},
+    'BMP280': {'init': init_bmp280, 'read': read_bmp280},
+    'SDP811': {'init': init_sdp811, 'read': read_sdp811},
+    'DHT22': {'init': init_dht22, 'read': read_dht22},
+    'DS18B20': {'init': init_ds18b20, 'read': read_ds18b20},
+    'MCP3008': {'init': init_mcp3008, 'read': read_mcp3008},
+    'MPU6050': {'init': init_mpu6050, 'read': read_mpu6050}
+}
+
 
 # Load settings from file
 def load_settings():
@@ -306,13 +707,25 @@ def generate_mock_data():
         elif sensor_type == 'calculated':
             # Handle calculated values (will be computed after all sensors)
             pass
-        elif sensor_type in ['gpio_analog', 'i2c', 'spi', 'uart']:
-            # Real sensor reading - TO BE IMPLEMENTED
-            # For now, return 0 to distinguish from mock data
-            # TODO: Implement actual hardware sensor reading based on sensor_type and config
-            value = 0.0
-            sensor_values[sensor_id] = value
-            data[sensor_id] = value
+        elif sensor_type in SENSOR_HANDLERS:
+            # Hardware sensor - initialize if needed and read value
+            if sensor_id not in sensor_instances:
+                print(f"Initializing hardware sensor: {sensor_id} ({sensor_type})")
+                handler = SENSOR_HANDLERS[sensor_type]
+                instance = handler['init'](sensor.get('config', {}))
+                sensor_instances[sensor_id] = instance
+            
+            # Read value from sensor
+            if sensor_id in sensor_instances:
+                handler = SENSOR_HANDLERS[sensor_type]
+                value = handler['read'](sensor_instances[sensor_id], sensor.get('config', {}))
+                sensor_values[sensor_id] = value
+                data[sensor_id] = value
+            else:
+                # Failed to initialize
+                value = 0.0
+                sensor_values[sensor_id] = value
+                data[sensor_id] = value
         else:
             # Unknown sensor type - return 0
             value = 0.0
@@ -616,7 +1029,18 @@ def settings():
 @app.route('/api/sensor-types', methods=['GET'])
 def get_sensor_types():
     """Get available sensor types and their configuration requirements."""
-    return jsonify(SENSOR_TYPES)
+    # Add availability information to sensor types
+    sensor_types_with_availability = {}
+    for type_id, type_info in SENSOR_TYPES.items():
+        sensor_types_with_availability[type_id] = type_info.copy()
+        # Mark hardware sensors as available/unavailable based on library presence
+        if type_info.get('category') == 'hardware':
+            sensor_types_with_availability[type_id]['available'] = available_sensor_libraries.get(type_id, False)
+        else:
+            # Mock and calculated are always available
+            sensor_types_with_availability[type_id]['available'] = True
+    
+    return jsonify(sensor_types_with_availability)
 
 @app.route('/api/sensors', methods=['GET'])
 def get_sensors():
@@ -743,6 +1167,62 @@ def reset_settings():
         return jsonify({'status': 'success', 'message': 'Settings reset to defaults'})
     else:
         return jsonify({'status': 'error', 'message': 'Failed to save settings'}), 500
+
+@app.route('/api/test-sensor', methods=['POST'])
+def test_sensor():
+    """Test hardware sensor connection and initialization."""
+    try:
+        data = request.get_json()
+        sensor_type = data.get('sensor_type')
+        config = data.get('config', {})
+        
+        if not sensor_type:
+            return jsonify({'status': 'error', 'message': 'sensor_type is required'}), 400
+        
+        # Check if library is available
+        if sensor_type in available_sensor_libraries and not available_sensor_libraries[sensor_type]:
+            return jsonify({
+                'status': 'error',
+                'message': f'Library for {sensor_type} is not installed. Please run the sensor library installation.'
+            }), 400
+        
+        if sensor_type not in SENSOR_HANDLERS:
+            return jsonify({'status': 'error', 'message': f'Unknown sensor type: {sensor_type}'}), 400
+        
+        handler = SENSOR_HANDLERS[sensor_type]
+        
+        # Try to initialize the sensor
+        try:
+            sensor_instance = handler['init'](config)
+            
+            # Try to read a value
+            value = handler['read'](sensor_instance, config)
+            
+            return jsonify({
+                'status': 'success',
+                'message': f'Sensor initialized successfully. Current reading: {value:.2f}',
+                'value': value
+            })
+        except Exception as init_error:
+            return jsonify({
+                'status': 'error',
+                'message': f'Failed to initialize sensor: {str(init_error)}'
+            }), 500
+            
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'Test failed: {str(e)}'
+        }), 500
+
+@app.route('/api/refresh-sensor-libraries', methods=['POST'])
+def refresh_sensor_libraries():
+    """Recheck which sensor libraries are available (call after installation)."""
+    check_sensor_library_availability()
+    return jsonify({
+        'status': 'success',
+        'libraries': available_sensor_libraries
+    })
 
 @app.route('/api/update', methods=['POST'])
 def trigger_update():

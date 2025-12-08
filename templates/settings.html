@@ -308,6 +308,10 @@
             color: var(--accent-color);
         }
 
+        .progress-log-line.warning {
+            color: #f39c12;
+        }
+
         .progress-log-line.info {
             color: var(--secondary-color);
         }
@@ -490,6 +494,115 @@
             margin-top: 10px;
             padding-top: 10px;
             border-top: 1px solid var(--border-color);
+        }
+
+        .hardware-config-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 3000;
+        }
+
+        .hardware-config-content {
+            background: white;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .configure-hardware-btn {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .configure-hardware-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .sensor-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .sensor-status.connected {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .sensor-status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .sensor-status.unconfigured {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .status-dot.green { background: #28a745; }
+        .status-dot.red { background: #dc3545; }
+        .status-dot.yellow { background: #ffc107; }
+
+        .test-connection-btn {
+            padding: 8px 16px;
+            background: var(--secondary-color);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            margin-top: 10px;
+        }
+
+        .test-connection-btn:hover {
+            background: #2980b9;
+        }
+
+        .hardware-field-group {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+
+        .hardware-field-group h4 {
+            margin: 0 0 12px 0;
+            color: var(--primary-color);
+            font-size: 1rem;
         }
     </style>
 </head>
@@ -842,9 +955,13 @@
                         <div class="sensor-field">
                             <label>Sensor Type</label>
                             <select onchange="updateSensor(${index}, 'type', this.value); renderSensorList();">
-                                ${Object.keys(sensorTypes).map(type => 
-                                    `<option value="${type}" ${sensor.type === type ? 'selected' : ''}>${sensorTypes[type].name}</option>`
-                                ).join('')}
+                                ${Object.keys(sensorTypes).map(type => {
+                                    const typeInfo = sensorTypes[type];
+                                    const isAvailable = typeInfo.available !== false;
+                                    const isSelected = sensor.type === type;
+                                    const unavailableLabel = !isAvailable ? ' ⚠️ (library not installed)' : '';
+                                    return `<option value="${type}" ${isSelected ? 'selected' : ''} ${!isAvailable && !isSelected ? 'disabled' : ''}>${typeInfo.name}${unavailableLabel}</option>`;
+                                }).join('')}
                             </select>
                         </div>
                         <div class="sensor-field">
@@ -876,6 +993,35 @@
             }
             
             let html = '<div class="config-fields">';
+            
+            // For hardware sensors, show Configure Hardware button
+            if (type.category === 'hardware') {
+                const isConfigured = sensor.config && Object.keys(sensor.config).length > 0;
+                const statusClass = isConfigured ? (sensor.status === 'connected' ? 'connected' : 'disconnected') : 'unconfigured';
+                const statusText = isConfigured ? (sensor.status === 'connected' ? 'Connected' : 'Disconnected') : 'Not Configured';
+                const dotClass = isConfigured ? (sensor.status === 'connected' ? 'green' : 'red') : 'yellow';
+                
+                html += `
+                    <div style="margin: 15px 0;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <span class="sensor-status ${statusClass}">
+                                <span class="status-dot ${dotClass}"></span>
+                                ${statusText}
+                            </span>
+                            <small style="color: var(--text-secondary);">${type.name}</small>
+                        </div>
+                        <button class="configure-hardware-btn" onclick="openHardwareConfig(${index}); event.preventDefault();">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="3"></circle>
+                                <path d="M12 1v6m0 6v6m8.66-13.66l-4.24 4.24m-4.84 4.84l-4.24 4.24M23 12h-6m-6 0H1m20.66 8.66l-4.24-4.24m-4.84-4.84l-4.24-4.24"></path>
+                            </svg>
+                            Configure Hardware Settings
+                        </button>
+                    </div>
+                `;
+                html += '</div>';
+                return html;
+            }
             
             // For calculated type, show available sensor IDs
             if (sensor.type === 'calculated') {
@@ -1107,6 +1253,150 @@
             }
         }
 
+        // Hardware Configuration Functions
+        let currentHardwareConfigIndex = null;
+
+        function openHardwareConfig(sensorIndex) {
+            currentHardwareConfigIndex = sensorIndex;
+            const sensor = sensors[sensorIndex];
+            const sensorType = sensorTypes[sensor.type];
+            
+            if (!sensorType || !sensorType.fields) {
+                showNotification('Error', 'Invalid sensor type', 'error');
+                return;
+            }
+            
+            // Generate hardware configuration form
+            const body = document.getElementById('hardwareConfigBody');
+            let html = `<h3 style="margin: 0 0 20px 0; color: var(--primary-color);">Configure ${sensorType.name}</h3>`;
+            html += `<p style="color: var(--text-secondary); margin-bottom: 20px;">${sensorType.description}</p>`;
+            
+            // Generate fields based on sensor type
+            sensorType.fields.forEach(field => {
+                html += generateHardwareField(field, sensor.config || {});
+            });
+            
+            body.innerHTML = html;
+            document.getElementById('hardwareModal').style.display = 'flex';
+        }
+
+        function closeHardwareConfig() {
+            document.getElementById('hardwareModal').style.display = 'none';
+            currentHardwareConfigIndex = null;
+        }
+
+        function generateHardwareField(field, config) {
+            const value = config[field.name] || field.default || '';
+            let html = `<div class="hardware-field-group">`;
+            html += `<label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--text-primary);">${field.label}</label>`;
+            
+            if (field.description) {
+                html += `<p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 10px;">${field.description}</p>`;
+            }
+            
+            if (field.type === 'select') {
+                html += `<select id="hw_${field.name}" style="width: 100%; padding: 10px; border: 2px solid var(--border-color); border-radius: 6px; font-size: 1rem;">`;
+                field.options.forEach(option => {
+                    const optValue = typeof option === 'object' ? option.value : option;
+                    const optLabel = typeof option === 'object' ? option.label : option;
+                    html += `<option value="${optValue}" ${value == optValue ? 'selected' : ''}>${optLabel}</option>`;
+                });
+                html += `</select>`;
+            } else if (field.type === 'number') {
+                const min = field.min !== undefined ? `min="${field.min}"` : '';
+                const max = field.max !== undefined ? `max="${field.max}"` : '';
+                const step = field.step !== undefined ? `step="${field.step}"` : 'step="any"';
+                html += `<input type="number" id="hw_${field.name}" value="${value}" ${min} ${max} ${step} style="width: 100%; padding: 10px; border: 2px solid var(--border-color); border-radius: 6px; font-size: 1rem;">`;
+            } else {
+                html += `<input type="text" id="hw_${field.name}" value="${value}" placeholder="${field.placeholder || ''}" style="width: 100%; padding: 10px; border: 2px solid var(--border-color); border-radius: 6px; font-size: 1rem;">`;
+            }
+            
+            html += `</div>`;
+            return html;
+        }
+
+        function saveHardwareConfig() {
+            if (currentHardwareConfigIndex === null) return;
+            
+            const sensor = sensors[currentHardwareConfigIndex];
+            const sensorType = sensorTypes[sensor.type];
+            
+            if (!sensor.config) {
+                sensor.config = {};
+            }
+            
+            // Collect all field values
+            sensorType.fields.forEach(field => {
+                const element = document.getElementById(`hw_${field.name}`);
+                if (element) {
+                    let value = element.value;
+                    // Convert to number if field type is number
+                    if (field.type === 'number') {
+                        value = parseFloat(value);
+                    }
+                    sensor.config[field.name] = value;
+                }
+            });
+            
+            // Mark as unconfigured initially (will test connection next)
+            sensor.status = 'unconfigured';
+            
+            closeHardwareConfig();
+            renderSensorList();
+            
+            showNotification('Configuration Saved', 'Hardware configuration has been saved. Click "Test Connection" to verify.', 'success');
+        }
+
+        async function testHardwareConnection() {
+            if (currentHardwareConfigIndex === null) return;
+            
+            const sensor = sensors[currentHardwareConfigIndex];
+            const sensorType = sensorTypes[sensor.type];
+            
+            // Collect current form values
+            const config = {};
+            sensorType.fields.forEach(field => {
+                const element = document.getElementById(`hw_${field.name}`);
+                if (element) {
+                    let value = element.value;
+                    if (field.type === 'number') {
+                        value = parseFloat(value);
+                    }
+                    config[field.name] = value;
+                }
+            });
+            
+            const notification = showNotification('Testing Connection', 'Attempting to connect to hardware sensor...', 'warning', true);
+            
+            try {
+                const response = await fetch('/api/test-sensor', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        sensor_type: sensor.type,
+                        config: config
+                    })
+                });
+                
+                const result = await response.json();
+                notification.remove();
+                
+                if (result.status === 'success') {
+                    showNotification('✅ Connection Successful', result.message || 'Hardware sensor is responding correctly.', 'success');
+                    sensor.status = 'connected';
+                } else {
+                    showNotification('❌ Connection Failed', result.message || 'Could not connect to hardware sensor.', 'error');
+                    sensor.status = 'disconnected';
+                }
+                
+                renderSensorList();
+            } catch (error) {
+                notification.remove();
+                showNotification('Error', 'Failed to test connection: ' + error.message, 'error');
+                sensor.status = 'disconnected';
+            }
+        }
+
         // Clear logs
         function clearLogs() {
             confirmAction('Are you sure you want to clear all data logs? This cannot be undone.', () => {
@@ -1171,12 +1461,28 @@
                                         clearInterval(pollInterval);
                                         const countdownText = document.getElementById('countdownText');
                                         if (countdownText) {
-                                            countdownText.textContent = 'Server restarted successfully! Reloading page...';
+                                            countdownText.textContent = 'Server restarted! Refreshing sensor libraries...';
                                         }
-                                        setTimeout(() => {
-                                            updateInProgress = false;
-                                            location.reload(true);
-                                        }, 500);
+                                        
+                                        // Refresh sensor library availability
+                                        fetch('/api/refresh-sensor-libraries', { method: 'POST' })
+                                            .then(r => r.json())
+                                            .then(() => {
+                                                if (countdownText) {
+                                                    countdownText.textContent = 'Update complete! Reloading page...';
+                                                }
+                                                setTimeout(() => {
+                                                    updateInProgress = false;
+                                                    location.reload(true);
+                                                }, 500);
+                                            })
+                                            .catch(() => {
+                                                // If refresh fails, still reload
+                                                setTimeout(() => {
+                                                    updateInProgress = false;
+                                                    location.reload(true);
+                                                }, 500);
+                                            });
                                     } else if (!response.ok) {
                                         serverWasDown = true;
                                     }
@@ -1335,6 +1641,32 @@
             <div class="sensor-modal-footer">
                 <button class="cancel-btn" onclick="closeSensorConfig()">Cancel</button>
                 <button class="save-btn" onclick="saveSensorConfig()">Save Sensors</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hardware Configuration Modal -->
+    <div id="hardwareModal" class="hardware-config-modal" style="display: none;">
+        <div class="hardware-config-content">
+            <div class="sensor-modal-header">
+                <h2>Hardware Configuration</h2>
+                <button class="graph-close-btn" onclick="closeHardwareConfig()" style="width: 40px; height: 40px;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            
+            <div class="sensor-modal-body" id="hardwareConfigBody">
+                <!-- Dynamic hardware fields will be generated here -->
+            </div>
+            
+            <div class="sensor-modal-footer">
+                <button class="test-connection-btn" onclick="testHardwareConnection()">🔌 Test Connection</button>
+                <div style="flex: 1;"></div>
+                <button class="cancel-btn" onclick="closeHardwareConfig()">Cancel</button>
+                <button class="save-btn" onclick="saveHardwareConfig()">Save Configuration</button>
             </div>
         </div>
     </div>
