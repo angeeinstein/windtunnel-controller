@@ -248,6 +248,67 @@ SENSOR_TYPES = {
              'options': ['accel_x', 'accel_y', 'accel_z', 'gyro_x', 'gyro_y', 'gyro_z', 'temperature'], 
              'default': 'accel_x'}
         ]
+    },
+    'XGZP6847A': {
+        'name': 'XGZP6847A Gauge Pressure',
+        'category': 'hardware',
+        'description': 'I2C gauge pressure sensor (measures relative to atmospheric pressure)',
+        'fields': [
+            {'name': 'address', 'label': 'I2C Address', 'type': 'select', 'options': ['0x6D', '0x6C', '0x6E', '0x6F'], 'default': '0x6D'},
+            {'name': 'pressure_range', 'label': 'Pressure Range', 'type': 'select', 
+             'options': [
+                 {'value': '1', 'label': '0-1 kPa'},
+                 {'value': '2.5', 'label': '0-2.5 kPa'},
+                 {'value': '5', 'label': '0-5 kPa'},
+                 {'value': '10', 'label': '0-10 kPa'},
+                 {'value': '20', 'label': '0-20 kPa'},
+                 {'value': '40', 'label': '0-40 kPa'}
+             ], 
+             'default': '5',
+             'description': 'Select your sensor variant range (check markings on sensor)'},
+            {'name': 'output', 'label': 'Output Value', 'type': 'select',
+             'options': ['pressure', 'temperature'],
+             'default': 'pressure',
+             'description': 'Pressure (Pa) or Temperature (°C)'},
+            {'name': 'altitude', 'label': 'Altitude (m)', 'type': 'number', 'default': 0, 'step': 1,
+             'description': 'For reference only (not used in calculation)'}
+        ]
+    },
+    'BME280': {
+        'name': 'BME280 Pressure/Temp/Humidity',
+        'category': 'hardware',
+        'description': 'Environmental sensor with pressure, temperature, and humidity',
+        'fields': [
+            {'name': 'address', 'label': 'I2C Address', 'type': 'select', 'options': ['0x76', '0x77'], 'default': '0x77'},
+            {'name': 'output', 'label': 'Output Value', 'type': 'select',
+             'options': ['pressure', 'temperature', 'humidity', 'altitude'],
+             'default': 'pressure'},
+            {'name': 'sea_level_pressure', 'label': 'Sea Level Pressure (hPa)', 'type': 'number', 'default': 1013.25, 'step': 0.01}
+        ]
+    },
+    'INA219': {
+        'name': 'INA219 Current/Voltage/Power',
+        'category': 'hardware',
+        'description': 'High-side current sensor for motor power measurement',
+        'fields': [
+            {'name': 'address', 'label': 'I2C Address', 'type': 'select', 
+             'options': ['0x40', '0x41', '0x44', '0x45'], 'default': '0x40'},
+            {'name': 'output', 'label': 'Output Value', 'type': 'select',
+             'options': ['current', 'voltage', 'power'],
+             'default': 'current',
+             'description': 'Current (mA), Bus Voltage (V), or Power (mW)'}
+        ]
+    },
+    'VL53L0X': {
+        'name': 'VL53L0X Time-of-Flight Distance',
+        'category': 'hardware',
+        'description': 'Laser ranging sensor for precise distance measurement',
+        'fields': [
+            {'name': 'address', 'label': 'I2C Address', 'type': 'select', 'options': ['0x29'], 'default': '0x29'},
+            {'name': 'mode', 'label': 'Ranging Mode', 'type': 'select',
+             'options': ['better_accuracy', 'long_range', 'high_speed'],
+             'default': 'better_accuracy'}
+        ]
     }
 }
 
@@ -270,7 +331,11 @@ def check_sensor_library_availability():
         'DHT22': 'adafruit_dht',
         'DS18B20': 'w1thermsensor',
         'MCP3008': 'adafruit_mcp3xxx.mcp3008',
-        'MPU6050': 'adafruit_mpu6050'
+        'MPU6050': 'adafruit_mpu6050',
+        'XGZP6847A': 'smbus2',  # Uses generic I2C library
+        'BME280': 'adafruit_bme280',
+        'INA219': 'adafruit_ina219',
+        'VL53L0X': 'adafruit_vl53l0x'
     }
     
     for sensor_type, module_name in library_checks.items():
@@ -601,6 +666,175 @@ def read_mpu6050(sensor, config):
         print(f"Error reading MPU6050: {e}")
         return 0
 
+def init_xgzp6847a(config):
+    """Initialize XGZP6847A differential pressure sensor"""
+    try:
+        from smbus2 import SMBus
+        
+        address = int(config.get('address', '0x6D'), 16)
+        bus = SMBus(1)  # I2C bus 1
+        
+        # Store config with sensor instance
+        sensor_data = {
+            'bus': bus,
+            'address': address,
+            'pressure_range': float(config.get('pressure_range', 5))  # kPa
+        }
+        
+        print(f"XGZP6847A initialized at {config.get('address')}")
+        return sensor_data
+    except Exception as e:
+        print(f"Error initializing XGZP6847A: {e}")
+        return None
+
+def read_xgzp6847a(sensor, config):
+    """Read value from XGZP6847A"""
+    try:
+        if sensor is None:
+            return 0
+        
+        bus = sensor['bus']
+        address = sensor['address']
+        pressure_range_kpa = sensor['pressure_range']
+        
+        # Read 3 bytes from sensor
+        data = bus.read_i2c_block_data(address, 0x00, 3)
+        
+        # Convert to pressure (Pa)
+        # 24-bit value: combine bytes
+        raw = (data[0] << 16) | (data[1] << 8) | data[2]
+        
+        # Calculate gauge pressure based on range
+        # Full scale = 2^24 - 1 = 16777215
+        # This is a gauge pressure sensor (relative to atmospheric)
+        pressure_pa = (raw / 16777215.0) * pressure_range_kpa * 1000
+        
+        output = config.get('output', 'pressure')
+        
+        if output == 'pressure':
+            return pressure_pa
+        elif output == 'temperature':
+            # Temperature reading (if available - some variants support this)
+            # For now return 0 as not all variants have temp sensor
+            return 0
+        
+        return pressure_pa
+    except Exception as e:
+        print(f"Error reading XGZP6847A: {e}")
+        return 0
+
+def init_bme280(config):
+    """Initialize BME280 environmental sensor"""
+    try:
+        import board
+        import busio
+        import adafruit_bme280
+        
+        i2c = busio.I2C(board.SCL, board.SDA)
+        address = int(config.get('address', '0x77'), 16)
+        sensor = adafruit_bme280.Adafruit_BME280_I2C(i2c, address)
+        
+        # Set sea level pressure for altitude calculation
+        sensor.sea_level_pressure = float(config.get('sea_level_pressure', 1013.25))
+        
+        print(f"BME280 initialized at {config.get('address')}")
+        return sensor
+    except Exception as e:
+        print(f"Error initializing BME280: {e}")
+        return None
+
+def read_bme280(sensor, config):
+    """Read value from BME280"""
+    try:
+        if sensor is None:
+            return 0
+        
+        output = config.get('output', 'pressure')
+        
+        if output == 'pressure':
+            return sensor.pressure  # hPa
+        elif output == 'temperature':
+            return sensor.temperature  # °C
+        elif output == 'humidity':
+            return sensor.humidity  # %
+        elif output == 'altitude':
+            return sensor.altitude  # meters
+        return 0
+    except Exception as e:
+        print(f"Error reading BME280: {e}")
+        return 0
+
+def init_ina219(config):
+    """Initialize INA219 current sensor"""
+    try:
+        import board
+        import busio
+        import adafruit_ina219
+        
+        i2c = busio.I2C(board.SCL, board.SDA)
+        address = int(config.get('address', '0x40'), 16)
+        sensor = adafruit_ina219.INA219(i2c, address)
+        
+        print(f"INA219 initialized at {config.get('address')}")
+        return sensor
+    except Exception as e:
+        print(f"Error initializing INA219: {e}")
+        return None
+
+def read_ina219(sensor, config):
+    """Read value from INA219"""
+    try:
+        if sensor is None:
+            return 0
+        
+        output = config.get('output', 'current')
+        
+        if output == 'current':
+            return sensor.current  # mA
+        elif output == 'voltage':
+            return sensor.bus_voltage  # V
+        elif output == 'power':
+            return sensor.power  # mW
+        return 0
+    except Exception as e:
+        print(f"Error reading INA219: {e}")
+        return 0
+
+def init_vl53l0x(config):
+    """Initialize VL53L0X distance sensor"""
+    try:
+        import board
+        import busio
+        import adafruit_vl53l0x
+        
+        i2c = busio.I2C(board.SCL, board.SDA)
+        sensor = adafruit_vl53l0x.VL53L0X(i2c)
+        
+        # Set measurement mode
+        mode = config.get('mode', 'better_accuracy')
+        if mode == 'better_accuracy':
+            sensor.measurement_timing_budget = 200000
+        elif mode == 'long_range':
+            sensor.measurement_timing_budget = 33000
+        elif mode == 'high_speed':
+            sensor.measurement_timing_budget = 20000
+        
+        print(f"VL53L0X initialized in {mode} mode")
+        return sensor
+    except Exception as e:
+        print(f"Error initializing VL53L0X: {e}")
+        return None
+
+def read_vl53l0x(sensor, config):
+    """Read distance from VL53L0X"""
+    try:
+        if sensor is None:
+            return 0
+        return sensor.range  # mm
+    except Exception as e:
+        print(f"Error reading VL53L0X: {e}")
+        return 0
+
 # Sensor handler registry
 SENSOR_HANDLERS = {
     'HX711': {'init': init_hx711, 'read': read_hx711},
@@ -610,7 +844,11 @@ SENSOR_HANDLERS = {
     'DHT22': {'init': init_dht22, 'read': read_dht22},
     'DS18B20': {'init': init_ds18b20, 'read': read_ds18b20},
     'MCP3008': {'init': init_mcp3008, 'read': read_mcp3008},
-    'MPU6050': {'init': init_mpu6050, 'read': read_mpu6050}
+    'MPU6050': {'init': init_mpu6050, 'read': read_mpu6050},
+    'XGZP6847A': {'init': init_xgzp6847a, 'read': read_xgzp6847a},
+    'BME280': {'init': init_bme280, 'read': read_bme280},
+    'INA219': {'init': init_ina219, 'read': read_ina219},
+    'VL53L0X': {'init': init_vl53l0x, 'read': read_vl53l0x}
 }
 
 

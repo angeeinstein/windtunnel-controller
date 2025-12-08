@@ -46,8 +46,9 @@ function generateSensorCards() {
     };
     
     sensors.forEach(sensor => {
-        console.log('Processing sensor:', sensor.id, 'enabled:', sensor.enabled);
+        console.log('Processing sensor:', sensor.id, 'enabled:', sensor.enabled, 'showOnDashboard:', sensor.showOnDashboard);
         if (!sensor.enabled) return;
+        if (sensor.showOnDashboard === false) return;  // Skip sensors hidden from dashboard
         
         const card = document.createElement('div');
         const cardClass = sensor.type === 'calculated' ? 'data-card calculated' : 
@@ -364,6 +365,7 @@ function drawSparkline(canvasId, data, color = '#3498db') {
 function updateAllSparklines() {
     sensors.forEach(sensor => {
         if (!sensor.enabled) return;
+        if (sensor.showOnDashboard === false) return;  // Skip hidden sensors
         const canvasId = 'sparkline-' + sensor.id;
         const data = sparklineData[sensor.id] || [];
         const color = sensor.color || '#3498db';

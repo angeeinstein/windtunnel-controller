@@ -128,10 +128,14 @@ $PIP_CMD install --upgrade pip > /dev/null 2>&1 || true
 
 # I2C Sensors
 install_package "adafruit-circuitpython-bmp280" "BMP280 Pressure/Temp sensor"
+install_package "adafruit-circuitpython-bme280" "BME280 Pressure/Temp/Humidity"
 install_package "adafruit-circuitpython-ads1x15" "ADS1115 16-bit ADC"
 install_package "sensirion-i2c-driver" "Sensirion I2C driver"
 install_package "sensirion-i2c-sdp" "SDP811 differential pressure"
 install_package "adafruit-circuitpython-mpu6050" "MPU6050 gyro/accelerometer"
+install_package "smbus2" "XGZP6847A gauge pressure (smbus2)"
+install_package "adafruit-circuitpython-ina219" "INA219 current/voltage sensor"
+install_package "adafruit-circuitpython-vl53l0x" "VL53L0X laser distance sensor"
 
 # SPI Sensors
 install_package "hx711" "HX711 load cell amplifier"

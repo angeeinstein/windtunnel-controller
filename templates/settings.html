@@ -1006,6 +1006,14 @@
                                 <option value="false" ${sensor.enabled === false ? 'selected' : ''}>No</option>
                             </select>
                         </div>
+                        <div class="sensor-field">
+                            <label>Show on Dashboard</label>
+                            <select onchange="updateSensor(${index}, 'showOnDashboard', this.value === 'true')">
+                                <option value="true" ${sensor.showOnDashboard !== false ? 'selected' : ''}>Yes</option>
+                                <option value="false" ${sensor.showOnDashboard === false ? 'selected' : ''}>No</option>
+                            </select>
+                            <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">Hide sensor from main dashboard (still available for formulas)</div>
+                        </div>
                     </div>
                     ${renderSensorConfigFields(sensor, index)}
                 `;
