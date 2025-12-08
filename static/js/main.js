@@ -851,6 +851,14 @@ async function updateWiFiStatus() {
         const wifiIcon = document.getElementById('wifiIcon');
         const wifiIndicator = document.getElementById('wifiIndicator');
         
+        if (data.no_adapter) {
+            // Hide WiFi indicator if no adapter
+            wifiIndicator.style.display = 'none';
+            return;
+        }
+        
+        wifiIndicator.style.display = 'flex';
+        
         if (data.connected) {
             // Update icon based on signal strength
             if (data.signal_percent >= 75) {
@@ -874,8 +882,8 @@ async function updateWiFiStatus() {
         }
     } catch (error) {
         console.error('Error updating WiFi status:', error);
-        document.getElementById('wifiIcon').textContent = '📵';
-        document.getElementById('wifiIndicator').style.opacity = '0.3';
+        const wifiIndicator = document.getElementById('wifiIndicator');
+        wifiIndicator.style.display = 'none'; // Hide on error
     }
 }
 

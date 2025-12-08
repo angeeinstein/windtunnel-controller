@@ -1453,6 +1453,14 @@ def wifi_status():
         import subprocess
         import re
         
+        # Check if WiFi interface exists
+        try:
+            iw_result = subprocess.run(['iw', 'dev'], capture_output=True, text=True, timeout=2)
+            if 'Interface' not in iw_result.stdout:
+                return jsonify({'connected': False, 'no_adapter': True, 'message': 'No WiFi adapter found'})
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return jsonify({'connected': False, 'no_adapter': True, 'message': 'WiFi not available on this system'})
+        
         # Use iwconfig to get WiFi info (Linux)
         result = subprocess.run(['iwconfig'], capture_output=True, text=True, timeout=5)
         output = result.stdout
@@ -1487,10 +1495,22 @@ def wifi_scan():
         import subprocess
         import re
         
+        # Check if WiFi interface exists
+        try:
+            iw_result = subprocess.run(['iw', 'dev'], capture_output=True, text=True, timeout=2)
+            if 'Interface' not in iw_result.stdout:
+                return jsonify({'networks': [], 'error': 'No WiFi adapter found on this system'})
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return jsonify({'networks': [], 'error': 'WiFi not available (no wireless hardware detected)'})
+        
         # Use iwlist to scan for networks (requires sudo or permissions)
         result = subprocess.run(['sudo', 'iwlist', 'wlan0', 'scan'], 
                               capture_output=True, text=True, timeout=10)
         output = result.stdout
+        
+        # Check for permission errors
+        if 'Operation not permitted' in output or result.returncode != 0:
+            return jsonify({'networks': [], 'error': 'Permission denied. WiFi scanning requires sudo permissions.'})
         
         networks = []
         current_network = {}

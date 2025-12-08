@@ -1498,7 +1498,22 @@
                 const data = await response.json();
                 const statusEl = document.getElementById('wifiCurrentStatus');
                 
-                if (data.connected) {
+                if (data.no_adapter) {
+                    statusEl.innerHTML = `
+                        <div style="color: var(--text-secondary);">
+                            <span style="font-size: 1.2rem;">ℹ️</span> ${data.message || 'No WiFi adapter detected'}
+                            <div style="font-size: 0.85rem; margin-top: 4px;">WiFi features require wireless hardware</div>
+                        </div>
+                    `;
+                    // Disable scan button
+                    document.querySelector('.sensor-modal-body').innerHTML = `
+                        <div style="text-align: center; padding: 48px; color: var(--text-secondary);">
+                            <div style="font-size: 3rem; margin-bottom: 16px;">📡</div>
+                            <h3 style="margin: 0 0 8px 0;">WiFi Not Available</h3>
+                            <p>This system does not have a WiFi adapter.<br>WiFi features are only available on devices with wireless hardware.</p>
+                        </div>
+                    `;
+                } else if (data.connected) {
                     const signalBars = getSignalBars(data.signal_percent);
                     statusEl.innerHTML = `
                         <div style="display: flex; align-items: center; gap: 12px;">
@@ -1525,6 +1540,11 @@
             try {
                 const response = await fetch('/api/wifi/scan');
                 const data = await response.json();
+                
+                if (data.error) {
+                    listEl.innerHTML = `<p style="color: var(--danger); text-align: center; padding: 32px;">${data.error}</p>`;
+                    return;
+                }
                 
                 if (data.networks && data.networks.length > 0) {
                     let html = '<div style="display: flex; flex-direction: column; gap: 8px;">';
@@ -1556,7 +1576,7 @@
                 }
             } catch (error) {
                 console.error('Error scanning WiFi:', error);
-                listEl.innerHTML = '<p style="color: var(--danger); text-align: center; padding: 32px;">Scan failed. Make sure you have sudo permissions for iwlist.</p>';
+                listEl.innerHTML = '<p style="color: var(--danger); text-align: center; padding: 32px;">Scan failed: ' + error.message + '</p>';
             }
         }
 
