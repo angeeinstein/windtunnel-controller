@@ -282,9 +282,21 @@ def check_sensor_library_availability():
                 importlib.import_module(module_name)
             available_sensor_libraries[sensor_type] = True
             print(f"✓ {sensor_type} library available")
-        except (ImportError, ModuleNotFoundError):
+        except (ImportError, ModuleNotFoundError) as e:
             available_sensor_libraries[sensor_type] = False
-            print(f"✗ {sensor_type} library not available")
+            print(f"✗ {sensor_type} library not available (not installed)")
+        except RuntimeError as e:
+            # Library is installed but can't run (e.g., RPi.GPIO on non-Pi)
+            if "Raspberry Pi" in str(e) or "GPIO" in str(e):
+                available_sensor_libraries[sensor_type] = False
+                print(f"⚠ {sensor_type} library installed but requires Raspberry Pi hardware")
+            else:
+                available_sensor_libraries[sensor_type] = False
+                print(f"✗ {sensor_type} library error: {e}")
+        except Exception as e:
+            # Catch any other import errors
+            available_sensor_libraries[sensor_type] = False
+            print(f"✗ {sensor_type} library error: {e}")
     
     print(f"Library check complete: {sum(available_sensor_libraries.values())}/{len(available_sensor_libraries)} available")
     return available_sensor_libraries
