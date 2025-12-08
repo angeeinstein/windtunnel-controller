@@ -843,5 +843,45 @@ window.openFullscreenGraph = openFullscreenGraph;
 window.closeFullscreenGraph = closeFullscreenGraph;
 window.resetZoom = resetZoom;
 
+// WiFi Status Updates
+async function updateWiFiStatus() {
+    try {
+        const response = await fetch('/api/wifi/status');
+        const data = await response.json();
+        const wifiIcon = document.getElementById('wifiIcon');
+        const wifiIndicator = document.getElementById('wifiIndicator');
+        
+        if (data.connected) {
+            // Update icon based on signal strength
+            if (data.signal_percent >= 75) {
+                wifiIcon.textContent = '📶'; // Full signal
+                wifiIndicator.style.opacity = '1';
+            } else if (data.signal_percent >= 50) {
+                wifiIcon.textContent = '📶'; // Good signal
+                wifiIndicator.style.opacity = '0.9';
+            } else if (data.signal_percent >= 25) {
+                wifiIcon.textContent = '📶'; // Fair signal
+                wifiIndicator.style.opacity = '0.7';
+            } else {
+                wifiIcon.textContent = '📶'; // Weak signal
+                wifiIndicator.style.opacity = '0.5';
+            }
+            wifiIndicator.title = `WiFi: ${data.ssid} (${data.signal_percent}%)`;
+        } else {
+            wifiIcon.textContent = '📵'; // No WiFi
+            wifiIndicator.style.opacity = '0.4';
+            wifiIndicator.title = 'WiFi: Not connected';
+        }
+    } catch (error) {
+        console.error('Error updating WiFi status:', error);
+        document.getElementById('wifiIcon').textContent = '📵';
+        document.getElementById('wifiIndicator').style.opacity = '0.3';
+    }
+}
+
+// Update WiFi status every 10 seconds
+setInterval(updateWiFiStatus, 10000);
+
 // Initialize on page load
 loadConfiguration();
+updateWiFiStatus();

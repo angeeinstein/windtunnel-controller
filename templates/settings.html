@@ -651,6 +651,16 @@
                     <input type="number" inputmode="numeric" class="setting-input" value="2" min="0" max="5" id="decimalPlaces">
                 </div>
             </div>
+
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">Data Retention Period</div>
+                    <div class="setting-description">How long to keep sensor data in database (hours)</div>
+                </div>
+                <div class="setting-control">
+                    <input type="number" inputmode="numeric" class="setting-input" value="24" min="1" max="720" id="dataRetentionHours">
+                </div>
+            </div>
         </div>
 
         <!-- Measurement Settings -->
@@ -717,6 +727,21 @@
                 </div>
                 <div class="setting-control">
                     <button class="save-btn" onclick="updateSystem()" style="margin: 0; padding: 12px 30px; font-size: 1.1rem;">Check for Updates</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Network Settings -->
+        <div class="settings-section">
+            <h2>Network Settings</h2>
+            
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">WiFi Connection</div>
+                    <div class="setting-description">Manage WiFi network connections</div>
+                </div>
+                <div class="setting-control">
+                    <button class="secondary-btn" onclick="openWiFiModal()">Configure WiFi</button>
                 </div>
             </div>
         </div>
@@ -864,6 +889,7 @@
                 darkMode: document.getElementById('darkMode').classList.contains('active'),
                 developerMode: document.getElementById('developerMode').classList.contains('active'),
                 decimalPlaces: parseInt(document.getElementById('decimalPlaces').value),
+                dataRetentionHours: parseInt(document.getElementById('dataRetentionHours').value),
                 velocityUnit: document.getElementById('velocityUnit').value,
                 temperatureUnit: document.getElementById('temperatureUnit').value,
                 systemName: document.getElementById('systemName').value
@@ -910,6 +936,7 @@
                         
                         // Update form values with reset settings
                         document.getElementById('decimalPlaces').value = settings.decimalPlaces;
+                        document.getElementById('dataRetentionHours').value = settings.dataRetentionHours || 24;
                         document.getElementById('velocityUnit').value = settings.velocityUnit;
                         document.getElementById('temperatureUnit').value = settings.temperatureUnit;
                         document.getElementById('systemName').value = settings.systemName;
@@ -1437,11 +1464,155 @@
 
         // Clear logs
         function clearLogs() {
-            confirmAction('Are you sure you want to clear all data logs? This cannot be undone.', () => {
-                // TODO: Implement server-side log clearing
-                showNotification('Logs Cleared', 'All data logs have been cleared.', 'success');
-                console.log('Logs cleared');
+            confirmAction('Are you sure you want to clear all data logs? This cannot be undone.', async () => {
+                try {
+                    const response = await fetch('/api/logs/clear', {
+                        method: 'POST'
+                    });
+                    const result = await response.json();
+                    
+                    if (result.status === 'success') {
+                        showNotification('Logs Cleared', result.message, 'success');
+                    } else {
+                        showNotification('Error', result.message || 'Failed to clear logs', 'error');
+                    }
+                } catch (error) {
+                    showNotification('Error', 'Failed to clear logs: ' + error.message, 'error');
+                }
             });
+        }
+
+        // WiFi Management Functions
+        function openWiFiModal() {
+            document.getElementById('wifiModal').style.display = 'flex';
+            loadWiFiStatus();
+        }
+
+        function closeWiFiModal() {
+            document.getElementById('wifiModal').style.display = 'none';
+        }
+
+        async function loadWiFiStatus() {
+            try {
+                const response = await fetch('/api/wifi/status');
+                const data = await response.json();
+                const statusEl = document.getElementById('wifiCurrentStatus');
+                
+                if (data.connected) {
+                    const signalBars = getSignalBars(data.signal_percent);
+                    statusEl.innerHTML = `
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <span style="font-size: 1.5rem;">${signalBars}</span>
+                            <div>
+                                <div style="font-size: 1.1rem; color: var(--text-primary); font-weight: 600;">${data.ssid}</div>
+                                <div style="font-size: 0.9rem;">Signal: ${data.signal_percent}% (${data.signal_level} dBm)</div>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    statusEl.innerHTML = '<div style="color: var(--text-secondary);">Not connected to any network</div>';
+                }
+            } catch (error) {
+                console.error('Error loading WiFi status:', error);
+                document.getElementById('wifiCurrentStatus').innerHTML = '<div style="color: var(--danger);">Error loading status</div>';
+            }
+        }
+
+        async function scanWiFi() {
+            const listEl = document.getElementById('wifiNetworksList');
+            listEl.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 32px;">Scanning for networks...</p>';
+            
+            try {
+                const response = await fetch('/api/wifi/scan');
+                const data = await response.json();
+                
+                if (data.networks && data.networks.length > 0) {
+                    let html = '<div style="display: flex; flex-direction: column; gap: 8px;">';
+                    data.networks.forEach(network => {
+                        const signalBars = getSignalBars(network.signal_percent);
+                        const lockIcon = network.encrypted ? '🔒' : '';
+                        html += `
+                            <div onclick="connectToNetwork('${network.ssid}', ${network.encrypted})" 
+                                 style="padding: 16px; background: var(--card-bg); border-radius: 8px; cursor: pointer; 
+                                        border: 2px solid var(--border-color); transition: all 0.2s;"
+                                 onmouseover="this.style.borderColor='var(--primary-color)'" 
+                                 onmouseout="this.style.borderColor='var(--border-color)'">
+                                <div style="display: flex; align-items: center; gap: 12px;">
+                                    <span style="font-size: 1.2rem;">${signalBars}</span>
+                                    <div style="flex: 1;">
+                                        <div style="font-weight: 600; font-size: 1rem;">${network.ssid || '(Hidden Network)'} ${lockIcon}</div>
+                                        <div style="font-size: 0.85rem; color: var(--text-secondary);">
+                                            Signal: ${network.signal_percent}% • ${network.security || 'Open'}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    html += '</div>';
+                    listEl.innerHTML = html;
+                } else {
+                    listEl.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 32px;">No networks found</p>';
+                }
+            } catch (error) {
+                console.error('Error scanning WiFi:', error);
+                listEl.innerHTML = '<p style="color: var(--danger); text-align: center; padding: 32px;">Scan failed. Make sure you have sudo permissions for iwlist.</p>';
+            }
+        }
+
+        function connectToNetwork(ssid, encrypted) {
+            let password = '';
+            if (encrypted) {
+                password = prompt(`Enter password for "${ssid}":`);
+                if (password === null) return; // User cancelled
+            }
+            
+            const notification = showNotification('Connecting', `Connecting to ${ssid}...`, 'warning', true);
+            
+            fetch('/api/wifi/connect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ssid: ssid, password: password })
+            })
+            .then(response => response.json())
+            .then(data => {
+                notification.remove();
+                if (data.status === 'success') {
+                    showNotification('Connected', data.message, 'success');
+                    setTimeout(() => loadWiFiStatus(), 2000);
+                } else {
+                    showNotification('Connection Failed', data.message, 'error');
+                }
+            })
+            .catch(error => {
+                notification.remove();
+                showNotification('Error', 'Failed to connect: ' + error.message, 'error');
+            });
+        }
+
+        async function checkInternet() {
+            const statusEl = document.getElementById('internetStatus');
+            statusEl.textContent = 'Checking...';
+            
+            try {
+                const response = await fetch('/api/internet/check');
+                const data = await response.json();
+                
+                if (data.connected) {
+                    statusEl.innerHTML = '<span style="color: var(--success);">✓ ' + data.message + '</span>';
+                } else {
+                    statusEl.innerHTML = '<span style="color: var(--danger);">✗ ' + data.message + '</span>';
+                }
+            } catch (error) {
+                statusEl.innerHTML = '<span style="color: var(--danger);">✗ Check failed</span>';
+            }
+        }
+
+        function getSignalBars(percent) {
+            if (percent >= 75) return '📶'; // Full signal
+            if (percent >= 50) return '📶'; // Good signal
+            if (percent >= 25) return '📶'; // Fair signal
+            return '📶'; // Weak signal
         }
 
         // Update system
@@ -1573,11 +1744,13 @@
                 .then(response => response.json())
                 .then(settings => {
                     document.getElementById('decimalPlaces').value = settings.decimalPlaces || 2;
+                    document.getElementById('dataRetentionHours').value = settings.dataRetentionHours || 24;
                     document.getElementById('velocityUnit').value = settings.velocityUnit || 'ms';
                     document.getElementById('temperatureUnit').value = settings.temperatureUnit || 'c';
                     document.getElementById('systemName').value = settings.systemName || 'Wind Tunnel Alpha';
                     
                     if (settings.darkMode) document.getElementById('darkMode').classList.add('active');
+                    if (settings.developerMode) document.getElementById('developerMode').classList.add('active');
                 })
                 .catch(error => {
                     console.error('Failed to load settings:', error);
@@ -1707,6 +1880,61 @@
                 <div style="flex: 1;"></div>
                 <button class="cancel-btn" onclick="closeHardwareConfig()">Cancel</button>
                 <button class="save-btn" onclick="saveHardwareConfig()">Save Configuration</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- WiFi Configuration Modal -->
+    <div id="wifiModal" class="hardware-config-modal" style="display: none;">
+        <div class="hardware-config-content">
+            <div class="sensor-modal-header">
+                <h2>WiFi Configuration</h2>
+                <button class="graph-close-btn" onclick="closeWiFiModal()" style="width: 40px; height: 40px;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            
+            <div class="sensor-modal-body">
+                <!-- Current Status -->
+                <div style="margin-bottom: 24px; padding: 16px; background: var(--card-bg); border-radius: 8px;">
+                    <h3 style="margin: 0 0 12px 0; font-size: 1.1rem;">Current Connection</h3>
+                    <div id="wifiCurrentStatus" style="color: var(--text-secondary);">
+                        Loading...
+                    </div>
+                </div>
+
+                <!-- Internet Status -->
+                <div style="margin-bottom: 24px; padding: 16px; background: var(--card-bg); border-radius: 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <h3 style="margin: 0 0 8px 0; font-size: 1.1rem;">Internet Connection</h3>
+                            <div id="internetStatus" style="color: var(--text-secondary);">
+                                Not checked
+                            </div>
+                        </div>
+                        <button class="secondary-btn" onclick="checkInternet()">Check Now</button>
+                    </div>
+                </div>
+
+                <!-- Available Networks -->
+                <div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <h3 style="margin: 0; font-size: 1.1rem;">Available Networks</h3>
+                        <button class="secondary-btn" onclick="scanWiFi()">🔄 Scan</button>
+                    </div>
+                    <div id="wifiNetworksList" style="max-height: 400px; overflow-y: auto;">
+                        <p style="color: var(--text-secondary); text-align: center; padding: 32px;">
+                            Click "Scan" to search for networks
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="sensor-modal-footer">
+                <button class="cancel-btn" onclick="closeWiFiModal()">Close</button>
             </div>
         </div>
     </div>

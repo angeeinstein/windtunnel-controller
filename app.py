@@ -112,8 +112,9 @@ def flush_db_write_queue():
             db_write_queue.extend(queue_copy)
 
 def cleanup_old_data():
-    """Remove sensor data older than DATA_RETENTION_HOURS."""
-    cutoff_time = time.time() - (DATA_RETENTION_HOURS * 3600)
+    """Remove sensor data older than configured retention period."""
+    retention_hours = current_settings.get('dataRetentionHours', DATA_RETENTION_HOURS)
+    cutoff_time = time.time() - (retention_hours * 3600)
     
     try:
         conn = sqlite3.connect(DB_FILE)
@@ -123,7 +124,7 @@ def cleanup_old_data():
         conn.commit()
         conn.close()
         if deleted_rows > 0:
-            print(f"Cleaned up {deleted_rows} old sensor data rows")
+            print(f"Cleaned up {deleted_rows} old sensor data rows (retention: {retention_hours}h)")
     except Exception as e:
         print(f"Error cleaning up database: {e}")
 
@@ -139,6 +140,7 @@ DEFAULT_SETTINGS = {
     'velocityUnit': 'ms',
     'temperatureUnit': 'c',
     'systemName': 'Wind Tunnel Alpha',
+    'dataRetentionHours': 24,  # How long to keep sensor data in database
     'sensors': []
 }
 
@@ -1420,6 +1422,179 @@ def update_settings():
     
     return jsonify({'status': 'error', 'message': 'Invalid request'}), 400
 
+@app.route('/api/logs/clear', methods=['POST'])
+def clear_logs():
+    """Clear all sensor data from database."""
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM sensor_data')
+        deleted_rows = cursor.rowcount
+        conn.commit()
+        conn.close()
+        
+        print(f"Cleared {deleted_rows} sensor data rows from database")
+        return jsonify({
+            'status': 'success',
+            'message': f'Successfully cleared {deleted_rows} data records from database',
+            'deleted_rows': deleted_rows
+        })
+    except Exception as e:
+        print(f"Error clearing database: {e}")
+        return jsonify({
+            'status': 'error',
+            'message': f'Failed to clear logs: {str(e)}'
+        }), 500
+
+@app.route('/api/wifi/status', methods=['GET'])
+def wifi_status():
+    """Get current WiFi connection status and signal strength."""
+    try:
+        import subprocess
+        import re
+        
+        # Use iwconfig to get WiFi info (Linux)
+        result = subprocess.run(['iwconfig'], capture_output=True, text=True, timeout=5)
+        output = result.stdout
+        
+        # Parse WiFi info
+        ssid_match = re.search(r'ESSID:"([^"]*)"', output)
+        signal_match = re.search(r'Signal level=(-?\d+)', output)
+        
+        if ssid_match and ssid_match.group(1):
+            ssid = ssid_match.group(1)
+            signal_level = int(signal_match.group(1)) if signal_match else -100
+            
+            # Convert signal level to percentage (typical range: -90 to -30 dBm)
+            signal_percent = max(0, min(100, (signal_level + 90) * 100 // 60))
+            
+            return jsonify({
+                'connected': True,
+                'ssid': ssid,
+                'signal_level': signal_level,
+                'signal_percent': signal_percent
+            })
+        else:
+            return jsonify({'connected': False})
+    except Exception as e:
+        print(f"Error getting WiFi status: {e}")
+        return jsonify({'connected': False, 'error': str(e)})
+
+@app.route('/api/wifi/scan', methods=['GET'])
+def wifi_scan():
+    """Scan for available WiFi networks."""
+    try:
+        import subprocess
+        import re
+        
+        # Use iwlist to scan for networks (requires sudo or permissions)
+        result = subprocess.run(['sudo', 'iwlist', 'wlan0', 'scan'], 
+                              capture_output=True, text=True, timeout=10)
+        output = result.stdout
+        
+        networks = []
+        current_network = {}
+        
+        for line in output.split('\n'):
+            line = line.strip()
+            
+            # New cell/network
+            if 'Cell' in line and 'Address' in line:
+                if current_network:
+                    networks.append(current_network)
+                current_network = {}
+            
+            # SSID
+            elif 'ESSID:' in line:
+                match = re.search(r'ESSID:"([^"]*)"', line)
+                if match:
+                    current_network['ssid'] = match.group(1)
+            
+            # Signal quality
+            elif 'Quality=' in line:
+                match = re.search(r'Quality=(\d+)/(\d+)', line)
+                if match:
+                    quality = int(match.group(1))
+                    max_quality = int(match.group(2))
+                    current_network['signal_percent'] = (quality * 100) // max_quality
+                
+                # Signal level in dBm
+                signal_match = re.search(r'Signal level=(-?\d+)', line)
+                if signal_match:
+                    current_network['signal_level'] = int(signal_match.group(1))
+            
+            # Encryption
+            elif 'Encryption key:' in line:
+                current_network['encrypted'] = 'on' in line.lower()
+            
+            # WPA/WPA2
+            elif 'WPA' in line:
+                current_network['security'] = 'WPA'
+        
+        # Add last network
+        if current_network and 'ssid' in current_network:
+            networks.append(current_network)
+        
+        # Sort by signal strength
+        networks.sort(key=lambda x: x.get('signal_percent', 0), reverse=True)
+        
+        return jsonify({'networks': networks})
+    except Exception as e:
+        print(f"Error scanning WiFi: {e}")
+        return jsonify({'networks': [], 'error': str(e)})
+
+@app.route('/api/wifi/connect', methods=['POST'])
+def wifi_connect():
+    """Connect to a WiFi network."""
+    try:
+        import subprocess
+        data = request.get_json()
+        ssid = data.get('ssid')
+        password = data.get('password', '')
+        
+        if not ssid:
+            return jsonify({'status': 'error', 'message': 'SSID is required'}), 400
+        
+        # Use nmcli to connect (NetworkManager)
+        if password:
+            cmd = ['sudo', 'nmcli', 'dev', 'wifi', 'connect', ssid, 'password', password]
+        else:
+            cmd = ['sudo', 'nmcli', 'dev', 'wifi', 'connect', ssid]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        
+        if result.returncode == 0:
+            return jsonify({
+                'status': 'success',
+                'message': f'Successfully connected to {ssid}'
+            })
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': f'Failed to connect: {result.stderr}'
+            }), 500
+    except Exception as e:
+        print(f"Error connecting to WiFi: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/internet/check', methods=['GET'])
+def internet_check():
+    """Check internet connectivity."""
+    try:
+        import subprocess
+        
+        # Ping a reliable server
+        result = subprocess.run(['ping', '-c', '1', '-W', '2', '8.8.8.8'], 
+                              capture_output=True, timeout=5)
+        
+        if result.returncode == 0:
+            return jsonify({'connected': True, 'message': 'Internet connection active'})
+        else:
+            return jsonify({'connected': False, 'message': 'No internet connection'})
+    except Exception as e:
+        print(f"Error checking internet: {e}")
+        return jsonify({'connected': False, 'message': 'Connection check failed'})
+
 @app.route('/api/settings/reset', methods=['POST'])
 def reset_settings():
     """Reset settings to defaults."""
@@ -1430,7 +1605,7 @@ def reset_settings():
     if save_settings_to_file(current_settings):
         # Emit settings update to all connected clients
         socketio.emit('settings_updated', current_settings)
-        return jsonify({'status': 'success', 'message': 'Settings reset to defaults'})
+        return jsonify({'status': 'success', 'message': 'Settings reset to defaults', 'settings': current_settings})
     else:
         return jsonify({'status': 'error', 'message': 'Failed to save settings'}), 500
 

@@ -278,6 +278,33 @@ install_sensor_libraries() {
     fi
 }
 
+# Configure sudo permissions for WiFi commands
+configure_sudo_permissions() {
+    print_step "Configuring sudo permissions for WiFi management..."
+    
+    # Get the current user (will be pi or the user running the script)
+    CURRENT_USER="${SUDO_USER:-$USER}"
+    SUDOERS_FILE="/etc/sudoers.d/windtunnel-wifi"
+    
+    # Create sudoers file for WiFi commands
+    cat > "$SUDOERS_FILE.tmp" <<EOF
+# Wind Tunnel Controller - WiFi Management Permissions
+# Allow passwordless sudo for WiFi commands
+${CURRENT_USER} ALL=(ALL) NOPASSWD: /usr/sbin/iwlist
+${CURRENT_USER} ALL=(ALL) NOPASSWD: /usr/bin/nmcli
+EOF
+    
+    # Validate the sudoers file before installing
+    if visudo -c -f "$SUDOERS_FILE.tmp" >/dev/null 2>&1; then
+        mv "$SUDOERS_FILE.tmp" "$SUDOERS_FILE"
+        chmod 0440 "$SUDOERS_FILE"
+        print_success "WiFi sudo permissions configured for user: $CURRENT_USER"
+    else
+        rm -f "$SUDOERS_FILE.tmp"
+        print_warning "Failed to configure sudo permissions (sudoers validation failed)"
+    fi
+}
+
 # Create systemd service
 create_service() {
     print_step "Creating systemd service..."
@@ -481,6 +508,13 @@ uninstall() {
         print_success "Service file removed"
     fi
     
+    # Remove sudoers file
+    if [[ -f "/etc/sudoers.d/windtunnel-wifi" ]]; then
+        print_info "Removing WiFi sudo permissions..."
+        rm -f "/etc/sudoers.d/windtunnel-wifi"
+        print_success "Sudo permissions removed"
+    fi
+    
     # Remove installation directory
     if [[ -d "$INSTALL_DIR" ]]; then
         print_info "Removing installation directory..."
@@ -564,6 +598,7 @@ main() {
             setup_venv
             install_python_packages
             install_sensor_libraries
+            configure_sudo_permissions
             create_service
             enable_service
             show_completion_info
@@ -574,6 +609,7 @@ main() {
             setup_venv
             install_python_packages
             install_sensor_libraries
+            configure_sudo_permissions
             create_service
             enable_service
             configure_firewall
@@ -586,6 +622,7 @@ main() {
         setup_venv
         install_python_packages
         install_sensor_libraries
+        configure_sudo_permissions
         create_service
         enable_service
         configure_firewall
