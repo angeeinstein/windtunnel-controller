@@ -1614,6 +1614,120 @@ def internet_check():
         print(f"Error checking internet: {e}")
         return jsonify({'connected': False, 'message': 'Connection check failed'})
 
+@app.route('/api/export/usb-drives', methods=['GET'])
+def list_usb_drives():
+    """List available USB drives."""
+    try:
+        import subprocess
+        import re
+        
+        drives = []
+        
+        # Try to detect USB drives using different methods based on platform
+        try:
+            # Linux: Use lsblk to list block devices
+            result = subprocess.run(['lsblk', '-o', 'NAME,SIZE,MOUNTPOINT,TYPE', '-J'], 
+                                  capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                import json
+                devices = json.loads(result.stdout)
+                
+                for device in devices.get('blockdevices', []):
+                    # Look for USB devices that are mounted
+                    if device.get('type') == 'part' and device.get('mountpoint'):
+                        mountpoint = device['mountpoint']
+                        # Check if it's likely a USB drive (not / or /boot)
+                        if mountpoint not in ['/', '/boot', '/boot/efi'] and '/media' in mountpoint or '/mnt' in mountpoint:
+                            drives.append({
+                                'name': device.get('name', 'USB Drive'),
+                                'path': mountpoint,
+                                'size': device.get('size', 'Unknown')
+                            })
+        except FileNotFoundError:
+            # lsblk not available, try alternative method
+            pass
+        
+        # If no drives found, try looking in common mount points
+        if not drives:
+            import os
+            common_mounts = ['/media', '/mnt']
+            for mount_base in common_mounts:
+                if os.path.exists(mount_base):
+                    for user_dir in os.listdir(mount_base):
+                        user_path = os.path.join(mount_base, user_dir)
+                        if os.path.isdir(user_path):
+                            for drive_dir in os.listdir(user_path):
+                                drive_path = os.path.join(user_path, drive_dir)
+                                if os.path.isdir(drive_path):
+                                    # Try to get size
+                                    try:
+                                        stat = os.statvfs(drive_path)
+                                        size_bytes = stat.f_frsize * stat.f_blocks
+                                        size_gb = size_bytes / (1024**3)
+                                        size_str = f"{size_gb:.1f} GB"
+                                    except:
+                                        size_str = "Unknown"
+                                    
+                                    drives.append({
+                                        'name': drive_dir,
+                                        'path': drive_path,
+                                        'size': size_str
+                                    })
+        
+        return jsonify({'status': 'success', 'drives': drives})
+    except Exception as e:
+        print(f"Error listing USB drives: {e}")
+        return jsonify({'status': 'error', 'message': str(e), 'drives': []}), 500
+
+@app.route('/api/export/data', methods=['POST'])
+def export_data():
+    """Export sensor data to CSV file on USB drive."""
+    try:
+        data = request.get_json()
+        drive_path = data.get('drive_path')
+        
+        if not drive_path:
+            return jsonify({'status': 'error', 'message': 'Drive path is required'}), 400
+        
+        # Create filename with timestamp
+        from datetime import datetime
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f'windtunnel_data_{timestamp}.csv'
+        filepath = os.path.join(drive_path, filename)
+        
+        # Query all data from database
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT timestamp, sensor_id, value 
+            FROM sensor_data 
+            ORDER BY timestamp ASC
+        ''')
+        
+        rows = cursor.fetchall()
+        
+        # Write to CSV file
+        with open(filepath, 'w', newline='') as csvfile:
+            csv_writer = csv.writer(csvfile)
+            csv_writer.writerow(['Timestamp', 'Sensor ID', 'Value'])
+            csv_writer.writerows(rows)
+        
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Data exported successfully',
+            'filename': filename,
+            'filepath': filepath,
+            'rows_exported': len(rows)
+        })
+    except PermissionError:
+        return jsonify({'status': 'error', 'message': 'Permission denied. Drive may be read-only.'}), 500
+    except Exception as e:
+        print(f"Error exporting data: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 @app.route('/api/settings/reset', methods=['POST'])
 def reset_settings():
     """Reset settings to defaults."""

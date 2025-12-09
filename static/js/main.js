@@ -890,6 +890,148 @@ async function updateWiFiStatus() {
 // Update WiFi status every 10 seconds
 setInterval(updateWiFiStatus, 10000);
 
+// Export Modal Functions
+let selectedUSBDrive = null;
+let exportAbortController = null;
+
+async function openExportModal() {
+    const modal = document.getElementById('exportModal');
+    modal.style.display = 'flex';
+    selectedUSBDrive = null;
+    await loadUSBDrives();
+}
+
+function closeExportModal() {
+    const modal = document.getElementById('exportModal');
+    modal.style.display = 'none';
+    selectedUSBDrive = null;
+}
+
+async function loadUSBDrives() {
+    const usbList = document.getElementById('usbDrivesList');
+    const exportStatus = document.getElementById('exportStatus');
+    
+    usbList.innerHTML = '<p style="text-align: center; color: var(--text-secondary);">Loading USB drives...</p>';
+    exportStatus.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">Select a USB drive to export sensor data</p>';
+    
+    try {
+        const response = await fetch('/api/export/usb-drives');
+        const data = await response.json();
+        
+        if (data.drives && data.drives.length > 0) {
+            usbList.innerHTML = data.drives.map(drive => `
+                <div class="usb-drive-item" onclick="selectUSBDrive('${drive.path}', '${drive.name}')">
+                    <div class="usb-drive-icon">💾</div>
+                    <div class="usb-drive-info">
+                        <div class="usb-drive-name">${drive.name}</div>
+                        <div class="usb-drive-details">${drive.path} • ${drive.size}</div>
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            usbList.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 32px;">No USB drives detected. Please insert a USB drive and click Refresh.</p>';
+        }
+    } catch (error) {
+        console.error('Error loading USB drives:', error);
+        usbList.innerHTML = '<p style="text-align: center; color: var(--accent-color); padding: 32px;">Error loading USB drives</p>';
+    }
+}
+
+function selectUSBDrive(path, name) {
+    selectedUSBDrive = { path, name };
+    
+    // Update visual selection
+    document.querySelectorAll('.usb-drive-item').forEach(item => {
+        item.classList.remove('selected');
+    });
+    event.target.closest('.usb-drive-item').classList.add('selected');
+    
+    // Start export
+    exportToUSB(path, name);
+}
+
+function cancelExport() {
+    if (exportAbortController) {
+        exportAbortController.abort();
+        exportAbortController = null;
+    }
+    
+    const progressDiv = document.getElementById('exportProgress');
+    const statusDiv = document.getElementById('exportStatus');
+    const usbList = document.getElementById('usbDrivesList');
+    
+    statusDiv.innerHTML = '<p style="color: var(--text-secondary); text-align: center;">Export cancelled</p>';
+    progressDiv.style.display = 'none';
+    usbList.style.display = 'block';
+    
+    // Reload drives list
+    setTimeout(() => loadUSBDrives(), 1000);
+}
+
+async function exportToUSB(path, name) {
+    const progressDiv = document.getElementById('exportProgress');
+    const statusDiv = document.getElementById('exportStatus');
+    const progressText = document.getElementById('exportProgressText');
+    const progressDetail = document.getElementById('exportProgressDetail');
+    const usbList = document.getElementById('usbDrivesList');
+    
+    progressDiv.style.display = 'block';
+    usbList.style.display = 'none';
+    progressText.textContent = 'Preparing export...';
+    progressDetail.textContent = `Exporting to ${name}`;
+    
+    // Create new abort controller for this export
+    exportAbortController = new AbortController();
+    
+    try {
+        const response = await fetch('/api/export/data', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ drive_path: path }),
+            signal: exportAbortController.signal
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            progressText.textContent = '✓ Export Complete!';
+            progressDetail.textContent = `${data.rows_exported} rows exported to ${data.filename}`;
+            setTimeout(() => {
+                closeExportModal();
+            }, 3000);
+        } else {
+            statusDiv.innerHTML = `<p style="color: var(--accent-color); text-align: center;">Export failed: ${data.message}</p>`;
+            progressDiv.style.display = 'none';
+            usbList.style.display = 'block';
+        }
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            // Request was cancelled, already handled by cancelExport()
+            console.log('Export cancelled by user');
+            return;
+        }
+        console.error('Export error:', error);
+        statusDiv.innerHTML = '<p style="color: var(--accent-color); text-align: center;">Export failed. Please try again.</p>';
+        progressDiv.style.display = 'none';
+        usbList.style.display = 'block';
+    } finally {
+        exportAbortController = null;
+    }
+}
+
+async function refreshUSBDrives() {
+    await loadUSBDrives();
+}
+
+// Close modal when clicking outside
+document.addEventListener('click', function(event) {
+    const exportModal = document.getElementById('exportModal');
+    if (event.target === exportModal) {
+        closeExportModal();
+    }
+});
+
 // Initialize on page load
 loadConfiguration();
 updateWiFiStatus();
+
