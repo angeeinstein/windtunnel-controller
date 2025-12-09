@@ -535,6 +535,40 @@ footer {
     background: #c0392b;
 }
 
+/* Cancel Button */
+.cancel-btn {
+    padding: 10px 24px;
+    background: var(--text-secondary);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+.cancel-btn:hover {
+    background: #5a6c7d;
+}
+
+/* Secondary Button */
+.secondary-btn {
+    padding: 10px 24px;
+    background: var(--secondary-color);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+.secondary-btn:hover {
+    background: #2980b9;
+}
+
 /* Touchscreen Optimizations */
 @media (hover: none) and (pointer: coarse) {
     .control-btn {
