@@ -602,8 +602,27 @@ main() {
             # Update mode
             print_info "Performing update..."
             update_repository
-            setup_venv
-            install_python_packages
+            
+            # Check if venv needs --system-site-packages flag (for Pi 5 GPIO support)
+            if [[ -d "$VENV_DIR" ]]; then
+                print_info "Checking virtual environment configuration..."
+                # Check if venv has system-site-packages enabled
+                if [[ ! -f "$VENV_DIR/pyvenv.cfg" ]] || ! grep -q "include-system-site-packages = true" "$VENV_DIR/pyvenv.cfg"; then
+                    print_warning "Virtual environment needs update for Raspberry Pi 5 GPIO support"
+                    print_info "Recreating virtual environment with system package access..."
+                    rm -rf "$VENV_DIR"
+                    setup_venv
+                    install_python_packages
+                else
+                    print_info "Virtual environment already configured correctly"
+                    setup_venv
+                    install_python_packages
+                fi
+            else
+                setup_venv
+                install_python_packages
+            fi
+            
             install_sensor_libraries
             configure_sudo_permissions
             create_service
