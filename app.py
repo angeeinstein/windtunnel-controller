@@ -455,13 +455,22 @@ def init_hx711(config):
         hx711_logger.info(f"Using /dev/gpiochip{chip_num}")
         
         # Store configuration in a dict (our "sensor object")
+        # Handle None values from config
+        reference_unit = config.get('reference_unit', 1.0)
+        if reference_unit is None:
+            reference_unit = 1.0
+        
+        offset = config.get('offset', 0.0)
+        if offset is None:
+            offset = 0.0
+        
         hx_dict = {
             'handle': chip_handle,
             'chip': chip_num,
             'dout': dout,
             'sck': sck,
-            'reference_unit': float(config.get('reference_unit', 1.0)),
-            'offset': float(config.get('offset', 0.0)),
+            'reference_unit': float(reference_unit),
+            'offset': float(offset),
             'channel': config.get('channel', 'A-128')
         }
         
@@ -1988,6 +1997,7 @@ def test_sensor():
         handler = SENSOR_HANDLERS[sensor_type]
         
         # Try to initialize the sensor
+        sensor_instance = None
         try:
             print(f"[TEST-SENSOR] Calling init handler for {sensor_type}...")
             sensor_instance = handler['init'](config)
@@ -1997,6 +2007,11 @@ def test_sensor():
             print(f"[TEST-SENSOR] Calling read handler for {sensor_type}...")
             value = handler['read'](sensor_instance, config)
             print(f"[TEST-SENSOR] Read returned: {value}")
+            
+            # Clean up sensor after test
+            if 'cleanup' in handler and sensor_instance is not None:
+                print(f"[TEST-SENSOR] Cleaning up {sensor_type}...")
+                handler['cleanup'](sensor_instance)
             
             # Heuristic check: if value is exactly 0.0, sensor might not be connected
             # (real sensors rarely read exactly 0.0, especially for temp/pressure)
@@ -2017,6 +2032,13 @@ def test_sensor():
                     'hardware_detected': False
                 })
         except Exception as init_error:
+            # Clean up on error
+            if 'cleanup' in handler and sensor_instance is not None:
+                try:
+                    handler['cleanup'](sensor_instance)
+                except:
+                    pass
+            
             print(f"[TEST-SENSOR] Exception during init/read: {init_error}")
             import traceback
             traceback.print_exc()
