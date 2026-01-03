@@ -1808,6 +1808,9 @@ def test_sensor():
         sensor_type = data.get('sensor_type')
         config = data.get('config', {})
         
+        print(f"[TEST-SENSOR] Testing sensor type: {sensor_type}")
+        print(f"[TEST-SENSOR] Config: {config}")
+        
         if not sensor_type:
             return jsonify({'status': 'error', 'message': 'sensor_type is required'}), 400
         
@@ -1825,10 +1828,14 @@ def test_sensor():
         
         # Try to initialize the sensor
         try:
+            print(f"[TEST-SENSOR] Calling init handler for {sensor_type}...")
             sensor_instance = handler['init'](config)
+            print(f"[TEST-SENSOR] Init returned: {sensor_instance}")
             
             # Try to read a value
+            print(f"[TEST-SENSOR] Calling read handler for {sensor_type}...")
             value = handler['read'](sensor_instance, config)
+            print(f"[TEST-SENSOR] Read returned: {value}")
             
             # Heuristic check: if value is exactly 0.0, sensor might not be connected
             # (real sensors rarely read exactly 0.0, especially for temp/pressure)
@@ -1849,12 +1856,18 @@ def test_sensor():
                     'hardware_detected': False
                 })
         except Exception as init_error:
+            print(f"[TEST-SENSOR] Exception during init/read: {init_error}")
+            import traceback
+            traceback.print_exc()
             return jsonify({
                 'status': 'error',
                 'message': f'Failed to initialize sensor: {str(init_error)}'
             }), 500
             
     except Exception as e:
+        print(f"[TEST-SENSOR] Exception in test_sensor: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({
             'status': 'error',
             'message': f'Test failed: {str(e)}'
