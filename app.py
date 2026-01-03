@@ -376,14 +376,16 @@ def init_hx711(config):
     """Initialize HX711 load cell amplifier"""
     try:
         from hx711 import HX711
+        import time
         
         hx = HX711(
             dout_pin=int(config.get('dout_pin', 5)),
             pd_sck_pin=int(config.get('pd_sck_pin', 6))
         )
         
-        hx.set_reference_unit(float(config.get('reference_unit', 1)))
-        hx.set_offset(int(config.get('offset', 0)))
+        # Power up and reset
+        hx.power_up()
+        hx.reset()
         
         # Set channel/gain
         channel_map = {'A-128': ('A', 128), 'A-64': ('A', 64), 'B-32': ('B', 32)}
@@ -391,11 +393,25 @@ def init_hx711(config):
         hx.select_channel(channel)
         hx.set_gain(gain)
         
-        hx.reset()
-        print(f"HX711 initialized on DOUT={config.get('dout_pin')}, SCK={config.get('pd_sck_pin')}")
+        # Set calibration parameters
+        hx.set_reference_unit(float(config.get('reference_unit', 1)))
+        hx.set_offset(int(config.get('offset', 0)))
+        
+        # Give it a moment to stabilize
+        time.sleep(0.5)
+        
+        # Do a test read to verify hardware is connected
+        test_val = hx.get_raw_data_mean(2)
+        if test_val is None:
+            print(f"HX711 on DOUT={config.get('dout_pin')}, SCK={config.get('pd_sck_pin')} - No data received (check wiring)")
+            return None
+        
+        print(f"HX711 initialized on DOUT={config.get('dout_pin')}, SCK={config.get('pd_sck_pin')} - Raw: {test_val}")
         return hx
     except Exception as e:
         print(f"Error initializing HX711: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 def read_hx711(sensor, config):
@@ -403,7 +419,15 @@ def read_hx711(sensor, config):
     try:
         if sensor is None:
             return 0
-        value = sensor.get_weight_mean(3)  # Average 3 readings
+        
+        # Try to get raw data first (more reliable for testing)
+        raw_value = sensor.get_raw_data_mean(3)
+        if raw_value is None:
+            print("HX711: No data received from sensor")
+            return 0
+        
+        # Get weight (applies calibration)
+        value = sensor.get_weight_mean(3)
         return value if value is not None else 0
     except Exception as e:
         print(f"Error reading HX711: {e}")
