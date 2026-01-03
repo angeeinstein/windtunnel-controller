@@ -391,6 +391,8 @@ def init_hx711(config):
         
         import lgpio
         import time
+        import os
+        import glob
         
         dout = int(config.get('dout_pin', 5))
         sck = int(config.get('pd_sck_pin', 6))
@@ -399,9 +401,19 @@ def init_hx711(config):
         hx711_logger.info(f"Physical pins: DOUT=Pin{dout_to_physical(dout)}, SCK=Pin{sck_to_physical(sck)}")
         hx711_logger.info("Using lgpio backend for Raspberry Pi 5")
         
+        # Check available gpiochip devices
+        gpiochips = glob.glob('/dev/gpiochip*')
+        hx711_logger.info(f"Available gpiochip devices: {gpiochips}")
+        
+        if not gpiochips:
+            hx711_logger.error("No /dev/gpiochip* devices found!")
+            hx711_logger.error("This is a kernel/hardware issue - GPIO not available")
+            return None
+        
         # Find and open the correct gpiochip
         chip_handle = None
         chip_num = None
+        last_error = None
         for chip in range(10):
             try:
                 h = lgpio.gpiochip_open(chip)
@@ -411,13 +423,15 @@ def init_hx711(config):
                 chip_num = chip
                 break
             except Exception as e:
+                last_error = str(e)
                 try:
                     lgpio.gpiochip_close(h)
                 except:
                     pass
         
         if chip_handle is None:
-            hx711_logger.error("Could not find gpiochip that exposes GPIO pins")
+            hx711_logger.error(f"Could not claim GPIO pins on any gpiochip")
+            hx711_logger.error(f"Last error: {last_error}")
             hx711_logger.error("Make sure python3-lgpio is installed: sudo apt-get install python3-lgpio")
             return None
         
