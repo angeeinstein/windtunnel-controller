@@ -8,8 +8,18 @@ import re
 import csv
 import sys
 import sqlite3
+import logging
 from datetime import datetime
 from threading import Lock, Thread
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(levelname)s [%(name)s] %(message)s'
+)
+logger = logging.getLogger('windtunnel')
+sensor_logger = logging.getLogger('windtunnel.sensor')
+hx711_logger = logging.getLogger('windtunnel.hx711')
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key-here'
@@ -375,61 +385,73 @@ check_sensor_library_availability()
 def init_hx711(config):
     """Initialize HX711 load cell amplifier"""
     try:
-        print(f"[HX711] Attempting to import library...")
+        hx711_logger.info("=" * 60)
+        hx711_logger.info("HX711 INITIALIZATION START")
+        hx711_logger.info("=" * 60)
         from hx711 import HX711
         import time
         
         dout = int(config.get('dout_pin', 5))
         sck = int(config.get('pd_sck_pin', 6))
         
-        print(f"[HX711] Creating HX711 instance with DOUT={dout}, SCK={sck}")
+        hx711_logger.info(f"Configuration: DOUT=GPIO{dout}, SCK=GPIO{sck}")
+        hx711_logger.info(f"Physical pins: DOUT=Pin{dout_to_physical(dout)}, SCK=Pin{sck_to_physical(sck)}")
+        
+        hx711_logger.info("Creating HX711 instance...")
         hx = HX711(dout_pin=dout, pd_sck_pin=sck)
         
-        print(f"[HX711] Powering up...")
+        hx711_logger.info("Powering up...")
         hx.power_up()
         
-        print(f"[HX711] Resetting...")
+        hx711_logger.info("Resetting chip...")
         hx.reset()
         
         # Set channel/gain
         channel_map = {'A-128': ('A', 128), 'A-64': ('A', 64), 'B-32': ('B', 32)}
         channel_str = config.get('channel', 'A-128')
         channel, gain = channel_map.get(channel_str, ('A', 128))
-        print(f"[HX711] Setting channel={channel}, gain={gain}")
+        hx711_logger.info(f"Setting channel={channel}, gain={gain}")
         hx.select_channel(channel)
         hx.set_gain(gain)
         
         # Set calibration parameters
         ref_unit = float(config.get('reference_unit', 1))
         offset = int(config.get('offset', 0))
-        print(f"[HX711] Setting reference_unit={ref_unit}, offset={offset}")
+        hx711_logger.info(f"Calibration: reference_unit={ref_unit}, offset={offset}")
         hx.set_reference_unit(ref_unit)
         hx.set_offset(offset)
         
         # Give it a moment to stabilize
-        print(f"[HX711] Waiting for stabilization...")
+        hx711_logger.info("Waiting 0.5s for stabilization...")
         time.sleep(0.5)
         
         # Do a test read to verify hardware is connected
-        print(f"[HX711] Testing hardware with raw data read...")
+        hx711_logger.info("Testing hardware connection (reading raw data)...")
         test_val = hx.get_raw_data_mean(2)
-        print(f"[HX711] Raw data result: {test_val}")
         
         if test_val is None:
-            print(f"[HX711] ERROR: No data received from sensor (check wiring)")
-            print(f"[HX711]   - DOUT pin {dout} (Physical pin: {dout_to_physical(dout)})")
-            print(f"[HX711]   - SCK pin {sck} (Physical pin: {sck_to_physical(sck)})")
-            print(f"[HX711]   - Check VCC (3.3V or 5V) and GND connections")
-            print(f"[HX711]   - Check load cell E+/E-/A+/A- connections")
+            hx711_logger.error("=" * 60)
+            hx711_logger.error("HX711 HARDWARE NOT DETECTED")
+            hx711_logger.error("=" * 60)
+            hx711_logger.error("No data received from sensor - possible causes:")
+            hx711_logger.error(f"  1. Check DOUT wiring: GPIO{dout} (Physical Pin {dout_to_physical(dout)})")
+            hx711_logger.error(f"  2. Check SCK wiring: GPIO{sck} (Physical Pin {sck_to_physical(sck)})")
+            hx711_logger.error("  3. Check power: VCC should be 3.3V or 5V (not both!)")
+            hx711_logger.error("  4. Check GND connection")
+            hx711_logger.error("  5. Check load cell wiring: E+, E-, A+, A- (or B+, B-)")
+            hx711_logger.error("  6. Try different GPIO pins (avoid I2C/SPI pins)")
+            hx711_logger.error("=" * 60)
             return None
         
-        print(f"[HX711] ✓ Successfully initialized - Raw value: {test_val}")
+        hx711_logger.info("=" * 60)
+        hx711_logger.info(f"✓ HX711 SUCCESSFULLY INITIALIZED - Raw value: {test_val}")
+        hx711_logger.info("=" * 60)
         return hx
     except ImportError as e:
-        print(f"[HX711] ERROR: Failed to import library: {e}")
+        hx711_logger.error(f"Failed to import HX711 library: {e}")
         return None
     except Exception as e:
-        print(f"[HX711] ERROR: Initialization failed: {e}")
+        hx711_logger.error(f"Initialization failed: {e}")
         import traceback
         traceback.print_exc()
         return None
@@ -448,23 +470,19 @@ def read_hx711(sensor, config):
     """Read force from HX711"""
     try:
         if sensor is None:
-            print(f"[HX711] Read called with None sensor")
             return 0
         
         # Try to get raw data first (more reliable for testing)
         raw_value = sensor.get_raw_data_mean(3)
         if raw_value is None:
-            print(f"[HX711] ERROR: No data received during read")
+            hx711_logger.warning("No data received during read")
             return 0
         
         # Get weight (applies calibration)
         value = sensor.get_weight_mean(3)
-        print(f"[HX711] Read: raw={raw_value}, calibrated={value}")
         return value if value is not None else 0
     except Exception as e:
-        print(f"[HX711] ERROR reading sensor: {e}")
-        import traceback
-        traceback.print_exc()
+        hx711_logger.error(f"Error reading sensor: {e}")
         return 0
 
 def init_ads1115(config):
