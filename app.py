@@ -433,6 +433,15 @@ def init_hx711(config):
                 last_error = f"chip{chip}: {type(e).__name__}: {str(e)}"
                 hx711_logger.info(f"Failed on chip{chip}: {last_error}")
                 try:
+                    # Try to free any claimed GPIOs before closing
+                    try:
+                        lgpio.gpio_free(h, dout)
+                    except:
+                        pass
+                    try:
+                        lgpio.gpio_free(h, sck)
+                    except:
+                        pass
                     lgpio.gpiochip_close(h)
                 except:
                     pass
@@ -565,6 +574,38 @@ def read_hx711(sensor, config):
     except Exception as e:
         hx711_logger.error(f"Error reading sensor: {e}")
         return 0
+
+def cleanup_hx711(sensor):
+    """Clean up HX711 GPIO resources"""
+    try:
+        if sensor is None:
+            return
+        
+        import lgpio
+        
+        handle = sensor.get('handle')
+        dout = sensor.get('dout')
+        sck = sensor.get('sck')
+        
+        if handle is not None:
+            # Free GPIO lines
+            try:
+                lgpio.gpio_free(handle, dout)
+            except:
+                pass
+            try:
+                lgpio.gpio_free(handle, sck)
+            except:
+                pass
+            
+            # Close gpiochip
+            try:
+                lgpio.gpiochip_close(handle)
+                hx711_logger.info(f"HX711 cleaned up: freed GPIO{dout}, GPIO{sck}")
+            except:
+                pass
+    except Exception as e:
+        hx711_logger.error(f"Error cleaning up HX711: {e}")
 
 def init_ads1115(config):
     """Initialize ADS1115 ADC"""
@@ -996,7 +1037,7 @@ def read_vl53l0x(sensor, config):
 
 # Sensor handler registry
 SENSOR_HANDLERS = {
-    'HX711': {'init': init_hx711, 'read': read_hx711},
+    'HX711': {'init': init_hx711, 'read': read_hx711, 'cleanup': cleanup_hx711},
     'ADS1115': {'init': init_ads1115, 'read': read_ads1115},
     'BMP280': {'init': init_bmp280, 'read': read_bmp280},
     'SDP811': {'init': init_sdp811, 'read': read_sdp811},
@@ -1550,13 +1591,34 @@ def get_settings():
 def update_settings():
     """Update settings."""
     from flask import request
-    global current_settings
+    global current_settings, sensor_instances
     
     try:
         new_settings = request.get_json()
         
         # Validate and update settings
         if new_settings:
+            # Check if sensors changed - if so, cleanup old hardware sensors
+            if 'sensors' in new_settings:
+                old_sensor_ids = {s.get('id') for s in current_settings.get('sensors', [])}
+                new_sensor_ids = {s.get('id') for s in new_settings.get('sensors', [])}
+                removed_sensors = old_sensor_ids - new_sensor_ids
+                
+                # Cleanup removed sensors
+                for sensor_id in removed_sensors:
+                    if sensor_id in sensor_instances:
+                        # Find sensor type
+                        for sensor in current_settings.get('sensors', []):
+                            if sensor.get('id') == sensor_id:
+                                sensor_type = sensor.get('type')
+                                if sensor_type in SENSOR_HANDLERS:
+                                    handler = SENSOR_HANDLERS[sensor_type]
+                                    if 'cleanup' in handler:
+                                        print(f"Cleaning up sensor: {sensor_id}")
+                                        handler['cleanup'](sensor_instances[sensor_id])
+                                break
+                        del sensor_instances[sensor_id]
+            
             # Ensure updateInterval is always 500ms (ignore any client changes)
             new_settings['updateInterval'] = UPDATE_INTERVAL_MS
             
