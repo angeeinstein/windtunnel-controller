@@ -2008,29 +2008,28 @@ def test_sensor():
             value = handler['read'](sensor_instance, config)
             print(f"[TEST-SENSOR] Read returned: {value}")
             
+            # Check if sensor initialized successfully
+            # For HX711, None means initialization failed
+            if sensor_instance is None:
+                return jsonify({
+                    'status': 'error',
+                    'message': '✗ Failed to initialize sensor. Check wiring and configuration.',
+                    'hardware_detected': False
+                })
+            
             # Clean up sensor after test
             if 'cleanup' in handler and sensor_instance is not None:
                 print(f"[TEST-SENSOR] Cleaning up {sensor_type}...")
                 handler['cleanup'](sensor_instance)
             
-            # Heuristic check: if value is exactly 0.0, sensor might not be connected
-            # (real sensors rarely read exactly 0.0, especially for temp/pressure)
-            hardware_detected = value != 0.0
-            
-            if hardware_detected:
-                return jsonify({
-                    'status': 'success',
-                    'message': f'✓ Sensor connected and working! Current reading: {value:.2f}',
-                    'value': value,
-                    'hardware_detected': True
-                })
-            else:
-                return jsonify({
-                    'status': 'warning',
-                    'message': f'⚠ Library works, but no hardware detected (reading: {value:.2f}). Check wiring and connections.',
-                    'value': value,
-                    'hardware_detected': False
-                })
+            # Hardware detected if sensor initialized (even if reading is 0)
+            # HX711 can legitimately read 0 when no load applied
+            return jsonify({
+                'status': 'success',
+                'message': f'✓ Sensor connected and working! Current reading: {value:.2f}',
+                'value': value,
+                'hardware_detected': True
+            })
         except Exception as init_error:
             # Clean up on error
             if 'cleanup' in handler and sensor_instance is not None:
