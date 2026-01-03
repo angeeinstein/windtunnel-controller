@@ -114,6 +114,7 @@ install_system_packages() {
         "build-essential"
         "libssl-dev"
         "libffi-dev"
+        "python3-lgpio"
     )
     
     # Check and install missing packages
@@ -199,10 +200,35 @@ setup_venv() {
     
     cd "$INSTALL_DIR" || exit 1
     
+    # Check if venv exists AND has system-site-packages enabled
+    local needs_recreate=false
     if [[ -d "$VENV_DIR" ]]; then
-        print_info "Virtual environment already exists"
+        # Check pyvenv.cfg for system-site-packages setting
+        if [[ -f "$VENV_DIR/pyvenv.cfg" ]]; then
+            if grep -q "include-system-site-packages = false" "$VENV_DIR/pyvenv.cfg"; then
+                print_warning "Virtual environment exists but lacks system-site-packages access"
+                print_info "Recreating virtual environment for GPIO support..."
+                needs_recreate=true
+            else
+                print_info "Virtual environment already exists with system package access"
+            fi
+        else
+            print_warning "Virtual environment missing pyvenv.cfg, recreating..."
+            needs_recreate=true
+        fi
     else
-        # Use --system-site-packages for Raspberry Pi 5 GPIO support
+        needs_recreate=true
+    fi
+    
+    if [[ "$needs_recreate" == "true" ]]; then
+        # Remove old venv if it exists
+        if [[ -d "$VENV_DIR" ]]; then
+            print_info "Removing old virtual environment..."
+            rm -rf "$VENV_DIR"
+        fi
+        
+        # Create new venv with system-site-packages for Raspberry Pi 5 GPIO support
+        print_info "Creating virtual environment with system package access..."
         $PYTHON_CMD -m venv "$VENV_DIR" --system-site-packages || {
             print_error "Failed to create virtual environment"
             exit 1
