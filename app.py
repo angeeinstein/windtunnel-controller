@@ -383,33 +383,13 @@ check_sensor_library_availability()
 
 # Sensor handler functions
 def init_hx711(config):
-    """Initialize HX711 load cell amplifier"""
+    """Initialize HX711 load cell amplifier using lgpio directly"""
     try:
         hx711_logger.info("=" * 60)
         hx711_logger.info("HX711 INITIALIZATION START")
         hx711_logger.info("=" * 60)
         
-        # Try to use lgpio for Raspberry Pi 5 compatibility
-        gpio_backend = None
-        try:
-            import RPi.GPIO as GPIO
-            # Try to set up GPIO to test if it works
-            GPIO.setmode(GPIO.BCM)
-            gpio_backend = "RPi.GPIO"
-            hx711_logger.info("Using RPi.GPIO backend")
-        except Exception as e:
-            hx711_logger.warning(f"RPi.GPIO not available or failed: {e}")
-            # Try lgpio for Pi 5
-            try:
-                import lgpio
-                gpio_backend = "lgpio"
-                hx711_logger.info("Using lgpio backend (Raspberry Pi 5)")
-            except ImportError:
-                hx711_logger.error("Neither RPi.GPIO nor lgpio available!")
-                hx711_logger.error("For Raspberry Pi 5, install: pip install rpi-lgpio")
-                return None
-        
-        from hx711 import HX711
+        import lgpio
         import time
         
         dout = int(config.get('dout_pin', 5))
@@ -417,68 +397,108 @@ def init_hx711(config):
         
         hx711_logger.info(f"Configuration: DOUT=GPIO{dout}, SCK=GPIO{sck}")
         hx711_logger.info(f"Physical pins: DOUT=Pin{dout_to_physical(dout)}, SCK=Pin{sck_to_physical(sck)}")
-        hx711_logger.info(f"GPIO Backend: {gpio_backend}")
+        hx711_logger.info("Using lgpio backend for Raspberry Pi 5")
         
-        hx711_logger.info("Creating HX711 instance...")
-        hx = HX711(dout_pin=dout, pd_sck_pin=sck)
+        # Find and open the correct gpiochip
+        chip_handle = None
+        chip_num = None
+        for chip in range(10):
+            try:
+                h = lgpio.gpiochip_open(chip)
+                lgpio.gpio_claim_input(h, dout)
+                lgpio.gpio_claim_output(h, sck, 0)
+                chip_handle = h
+                chip_num = chip
+                break
+            except Exception as e:
+                try:
+                    lgpio.gpiochip_close(h)
+                except:
+                    pass
         
-        hx711_logger.info("Powering up...")
-        hx.power_up()
+        if chip_handle is None:
+            hx711_logger.error("Could not find gpiochip that exposes GPIO pins")
+            hx711_logger.error("Make sure python3-lgpio is installed: sudo apt-get install python3-lgpio")
+            return None
         
-        hx711_logger.info("Resetting chip...")
-        hx.reset()
+        hx711_logger.info(f"Using /dev/gpiochip{chip_num}")
         
-        # Set channel/gain
-        channel_map = {'A-128': ('A', 128), 'A-64': ('A', 64), 'B-32': ('B', 32)}
-        channel_str = config.get('channel', 'A-128')
-        channel, gain = channel_map.get(channel_str, ('A', 128))
-        hx711_logger.info(f"Setting channel={channel}, gain={gain}")
-        hx.select_channel(channel)
-        hx.set_gain(gain)
+        # Store configuration in a dict (our "sensor object")
+        hx_dict = {
+            'handle': chip_handle,
+            'chip': chip_num,
+            'dout': dout,
+            'sck': sck,
+            'reference_unit': float(config.get('reference_unit', 1)),
+            'offset': int(config.get('offset', 0)),
+            'channel': config.get('channel', 'A-128')
+        }
         
-        # Set calibration parameters
-        ref_unit = float(config.get('reference_unit', 1))
-        offset = int(config.get('offset', 0))
-        hx711_logger.info(f"Calibration: reference_unit={ref_unit}, offset={offset}")
-        hx.set_reference_unit(ref_unit)
-        hx.set_offset(offset)
+        # Test read to verify hardware
+        hx711_logger.info("Testing hardware connection...")
+        time.sleep(0.2)
         
-        # Give it a moment to stabilize
-        hx711_logger.info("Waiting 0.5s for stabilization...")
-        time.sleep(0.5)
-        
-        # Do a test read to verify hardware is connected
-        hx711_logger.info("Testing hardware connection (reading raw data)...")
-        test_val = hx.get_raw_data_mean(2)
-        
-        if test_val is None:
-            hx711_logger.error("=" * 60)
-            hx711_logger.error("HX711 HARDWARE NOT DETECTED")
-            hx711_logger.error("=" * 60)
-            hx711_logger.error("No data received from sensor - possible causes:")
-            hx711_logger.error(f"  1. Check DOUT wiring: GPIO{dout} (Physical Pin {dout_to_physical(dout)})")
-            hx711_logger.error(f"  2. Check SCK wiring: GPIO{sck} (Physical Pin {sck_to_physical(sck)})")
-            hx711_logger.error("  3. Check power: VCC should be 3.3V or 5V (not both!)")
-            hx711_logger.error("  4. Check GND connection")
-            hx711_logger.error("  5. Check load cell wiring: E+, E-, A+, A- (or B+, B-)")
-            hx711_logger.error("  6. Try different GPIO pins (avoid I2C/SPI pins)")
-            hx711_logger.error("=" * 60)
+        try:
+            test_val = _hx711_read_raw(hx_dict)
+            if test_val is None:
+                hx711_logger.error("No data from HX711 - check wiring")
+                lgpio.gpiochip_close(chip_handle)
+                return None
+        except Exception as e:
+            hx711_logger.error(f"Hardware test failed: {e}")
+            lgpio.gpiochip_close(chip_handle)
             return None
         
         hx711_logger.info("=" * 60)
         hx711_logger.info(f"✓ HX711 SUCCESSFULLY INITIALIZED - Raw value: {test_val}")
         hx711_logger.info("=" * 60)
-        return hx
+        return hx_dict
+        
     except ImportError as e:
-        hx711_logger.error(f"Failed to import HX711 library: {e}")
+        hx711_logger.error(f"lgpio not available: {e}")
+        hx711_logger.error("Install with: sudo apt-get install python3-lgpio")
         return None
     except Exception as e:
         hx711_logger.error(f"Initialization failed: {e}")
-        hx711_logger.error("For Raspberry Pi 5 GPIO errors, try:")
-        hx711_logger.error("  sudo pip install rpi-lgpio")
         import traceback
         traceback.print_exc()
         return None
+
+def _hx711_read_raw(hx_dict):
+    """Read raw 24-bit value from HX711 using lgpio"""
+    import lgpio
+    import time
+    
+    h = hx_dict['handle']
+    dout = hx_dict['dout']
+    sck = hx_dict['sck']
+    
+    # Wait for data ready (DT goes low)
+    timeout = time.time() + 1.0
+    while lgpio.gpio_read(h, dout) == 1:
+        if time.time() > timeout:
+            return None
+        time.sleep(0.001)
+    
+    count = 0
+    # Read 24 bits
+    for _ in range(24):
+        lgpio.gpio_write(h, sck, 1)
+        count = (count << 1) | (1 if lgpio.gpio_read(h, dout) else 0)
+        lgpio.gpio_write(h, sck, 0)
+    
+    # Set gain/channel with extra pulses
+    channel = hx_dict.get('channel', 'A-128')
+    pulses = {'A-128': 1, 'A-64': 3, 'B-32': 2}.get(channel, 1)
+    for _ in range(pulses):
+        lgpio.gpio_write(h, sck, 1)
+        lgpio.gpio_write(h, sck, 0)
+    
+    # Convert from 24-bit two's complement to signed int
+    if count & 0x800000:
+        count -= 1 << 24
+    
+    return count
 
 def dout_to_physical(gpio):
     """Helper to convert GPIO to physical pin for debugging"""
@@ -496,15 +516,30 @@ def read_hx711(sensor, config):
         if sensor is None:
             return 0
         
-        # Try to get raw data first (more reliable for testing)
-        raw_value = sensor.get_raw_data_mean(3)
-        if raw_value is None:
-            hx711_logger.warning("No data received during read")
+        import time
+        
+        # Take multiple readings and average
+        readings = []
+        for _ in range(3):
+            raw = _hx711_read_raw(sensor)
+            if raw is not None:
+                readings.append(raw)
+            time.sleep(0.01)
+        
+        if not readings:
+            hx711_logger.warning("No valid readings from HX711")
             return 0
         
-        # Get weight (applies calibration)
-        value = sensor.get_weight_mean(3)
-        return value if value is not None else 0
+        # Average the readings
+        raw_avg = sum(readings) / len(readings)
+        
+        # Apply calibration: (raw - offset) / reference_unit
+        offset = sensor.get('offset', 0)
+        reference_unit = sensor.get('reference_unit', 1)
+        
+        value = (raw_avg - offset) / reference_unit
+        return value
+        
     except Exception as e:
         hx711_logger.error(f"Error reading sensor: {e}")
         return 0
