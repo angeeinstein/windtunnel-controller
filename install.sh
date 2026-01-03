@@ -375,22 +375,17 @@ EOF
     # Create udev rule for gpiochip device access
     print_info "Setting up GPIO device permissions..."
     cat > /etc/udev/rules.d/99-gpio.rules <<'UDEVRULE'
-# GPIO character device access for lgpio
-SUBSYSTEM=="gpio", KERNEL=="gpiochip*", MODE="0660", GROUP="gpio"
+# GPIO character device access for lgpio (world-readable for systemd services)
+SUBSYSTEM=="gpio", KERNEL=="gpiochip*", MODE="0666"
 UDEVRULE
     
-    # Create gpio group if it doesn't exist
-    if ! getent group gpio > /dev/null; then
-        groupadd -r gpio
-        print_info "Created gpio group"
-    fi
-    
-    # Add root to gpio group
-    usermod -a -G gpio root 2>/dev/null || true
-    
-    # Reload udev rules
+    # Reload udev rules and apply permissions immediately
     udevadm control --reload-rules
     udevadm trigger --subsystem-match=gpio
+    sleep 0.5
+    
+    # Set permissions directly as backup
+    chmod 666 /dev/gpiochip* 2>/dev/null || true
     
     print_success "GPIO permissions configured"
     
@@ -432,22 +427,17 @@ EOF
     # Create udev rule for gpiochip device access
     print_info "Setting up GPIO device permissions..."
     cat > /etc/udev/rules.d/99-gpio.rules <<'UDEVRULE'
-# GPIO character device access for lgpio
-SUBSYSTEM=="gpio", KERNEL=="gpiochip*", MODE="0660", GROUP="gpio"
+# GPIO character device access for lgpio (world-readable for systemd services)
+SUBSYSTEM=="gpio", KERNEL=="gpiochip*", MODE="0666"
 UDEVRULE
     
-    # Create gpio group if it doesn't exist
-    if ! getent group gpio > /dev/null; then
-        groupadd -r gpio
-        print_info "Created gpio group"
-    fi
-    
-    # Add root to gpio group
-    usermod -a -G gpio root 2>/dev/null || true
-    
-    # Reload udev rules
+    # Reload udev rules and apply permissions immediately
     udevadm control --reload-rules
     udevadm trigger --subsystem-match=gpio
+    sleep 0.5
+    
+    # Set permissions directly as backup
+    chmod 666 /dev/gpiochip* 2>/dev/null || true
     
     print_success "GPIO permissions configured"
     
