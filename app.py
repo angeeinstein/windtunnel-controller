@@ -414,16 +414,24 @@ def init_hx711(config):
         chip_handle = None
         chip_num = None
         last_error = None
+        hx711_logger.info(f"lgpio module location: {lgpio.__file__}")
+        hx711_logger.info(f"Current process UID: {os.getuid()}, GID: {os.getgid()}, Groups: {os.getgroups()}")
+        
         for chip in range(10):
             try:
+                hx711_logger.info(f"Attempting to open /dev/gpiochip{chip}...")
                 h = lgpio.gpiochip_open(chip)
+                hx711_logger.info(f"Successfully opened gpiochip{chip}, handle: {h}")
                 lgpio.gpio_claim_input(h, dout)
+                hx711_logger.info(f"Claimed GPIO{dout} as input")
                 lgpio.gpio_claim_output(h, sck, 0)
+                hx711_logger.info(f"Claimed GPIO{sck} as output")
                 chip_handle = h
                 chip_num = chip
                 break
             except Exception as e:
-                last_error = str(e)
+                last_error = f"chip{chip}: {type(e).__name__}: {str(e)}"
+                hx711_logger.info(f"Failed on chip{chip}: {last_error}")
                 try:
                     lgpio.gpiochip_close(h)
                 except:
