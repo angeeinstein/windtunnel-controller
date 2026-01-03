@@ -388,6 +388,27 @@ def init_hx711(config):
         hx711_logger.info("=" * 60)
         hx711_logger.info("HX711 INITIALIZATION START")
         hx711_logger.info("=" * 60)
+        
+        # Try to use lgpio for Raspberry Pi 5 compatibility
+        gpio_backend = None
+        try:
+            import RPi.GPIO as GPIO
+            # Try to set up GPIO to test if it works
+            GPIO.setmode(GPIO.BCM)
+            gpio_backend = "RPi.GPIO"
+            hx711_logger.info("Using RPi.GPIO backend")
+        except Exception as e:
+            hx711_logger.warning(f"RPi.GPIO not available or failed: {e}")
+            # Try lgpio for Pi 5
+            try:
+                import lgpio
+                gpio_backend = "lgpio"
+                hx711_logger.info("Using lgpio backend (Raspberry Pi 5)")
+            except ImportError:
+                hx711_logger.error("Neither RPi.GPIO nor lgpio available!")
+                hx711_logger.error("For Raspberry Pi 5, install: pip install rpi-lgpio")
+                return None
+        
         from hx711 import HX711
         import time
         
@@ -396,6 +417,7 @@ def init_hx711(config):
         
         hx711_logger.info(f"Configuration: DOUT=GPIO{dout}, SCK=GPIO{sck}")
         hx711_logger.info(f"Physical pins: DOUT=Pin{dout_to_physical(dout)}, SCK=Pin{sck_to_physical(sck)}")
+        hx711_logger.info(f"GPIO Backend: {gpio_backend}")
         
         hx711_logger.info("Creating HX711 instance...")
         hx = HX711(dout_pin=dout, pd_sck_pin=sck)
@@ -452,6 +474,8 @@ def init_hx711(config):
         return None
     except Exception as e:
         hx711_logger.error(f"Initialization failed: {e}")
+        hx711_logger.error("For Raspberry Pi 5 GPIO errors, try:")
+        hx711_logger.error("  sudo pip install rpi-lgpio")
         import traceback
         traceback.print_exc()
         return None
