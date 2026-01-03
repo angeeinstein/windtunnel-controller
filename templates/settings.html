@@ -1422,6 +1422,9 @@
             closeHardwareConfig();
             renderSensorList();
             
+            // Save configuration to server immediately
+            saveSensorConfig();
+            
             showNotification('Configuration Saved', 'Hardware configuration has been saved. Click "Test Connection" to verify.', 'success');
         }
 
