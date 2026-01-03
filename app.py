@@ -375,62 +375,96 @@ check_sensor_library_availability()
 def init_hx711(config):
     """Initialize HX711 load cell amplifier"""
     try:
+        print(f"[HX711] Attempting to import library...")
         from hx711 import HX711
         import time
         
-        hx = HX711(
-            dout_pin=int(config.get('dout_pin', 5)),
-            pd_sck_pin=int(config.get('pd_sck_pin', 6))
-        )
+        dout = int(config.get('dout_pin', 5))
+        sck = int(config.get('pd_sck_pin', 6))
         
-        # Power up and reset
+        print(f"[HX711] Creating HX711 instance with DOUT={dout}, SCK={sck}")
+        hx = HX711(dout_pin=dout, pd_sck_pin=sck)
+        
+        print(f"[HX711] Powering up...")
         hx.power_up()
+        
+        print(f"[HX711] Resetting...")
         hx.reset()
         
         # Set channel/gain
         channel_map = {'A-128': ('A', 128), 'A-64': ('A', 64), 'B-32': ('B', 32)}
-        channel, gain = channel_map.get(config.get('channel', 'A-128'), ('A', 128))
+        channel_str = config.get('channel', 'A-128')
+        channel, gain = channel_map.get(channel_str, ('A', 128))
+        print(f"[HX711] Setting channel={channel}, gain={gain}")
         hx.select_channel(channel)
         hx.set_gain(gain)
         
         # Set calibration parameters
-        hx.set_reference_unit(float(config.get('reference_unit', 1)))
-        hx.set_offset(int(config.get('offset', 0)))
+        ref_unit = float(config.get('reference_unit', 1))
+        offset = int(config.get('offset', 0))
+        print(f"[HX711] Setting reference_unit={ref_unit}, offset={offset}")
+        hx.set_reference_unit(ref_unit)
+        hx.set_offset(offset)
         
         # Give it a moment to stabilize
+        print(f"[HX711] Waiting for stabilization...")
         time.sleep(0.5)
         
         # Do a test read to verify hardware is connected
+        print(f"[HX711] Testing hardware with raw data read...")
         test_val = hx.get_raw_data_mean(2)
+        print(f"[HX711] Raw data result: {test_val}")
+        
         if test_val is None:
-            print(f"HX711 on DOUT={config.get('dout_pin')}, SCK={config.get('pd_sck_pin')} - No data received (check wiring)")
+            print(f"[HX711] ERROR: No data received from sensor (check wiring)")
+            print(f"[HX711]   - DOUT pin {dout} (Physical pin: {dout_to_physical(dout)})")
+            print(f"[HX711]   - SCK pin {sck} (Physical pin: {sck_to_physical(sck)})")
+            print(f"[HX711]   - Check VCC (3.3V or 5V) and GND connections")
+            print(f"[HX711]   - Check load cell E+/E-/A+/A- connections")
             return None
         
-        print(f"HX711 initialized on DOUT={config.get('dout_pin')}, SCK={config.get('pd_sck_pin')} - Raw: {test_val}")
+        print(f"[HX711] ✓ Successfully initialized - Raw value: {test_val}")
         return hx
+    except ImportError as e:
+        print(f"[HX711] ERROR: Failed to import library: {e}")
+        return None
     except Exception as e:
-        print(f"Error initializing HX711: {e}")
+        print(f"[HX711] ERROR: Initialization failed: {e}")
         import traceback
         traceback.print_exc()
         return None
+
+def dout_to_physical(gpio):
+    """Helper to convert GPIO to physical pin for debugging"""
+    gpio_to_physical = {2: 3, 3: 5, 4: 7, 17: 11, 27: 13, 22: 15, 10: 19, 9: 21, 11: 23, 5: 29, 6: 31, 13: 33, 19: 35, 26: 37,
+                        14: 8, 15: 10, 18: 12, 23: 16, 24: 18, 25: 22, 8: 24, 7: 26, 1: 28, 12: 32, 16: 36, 20: 38, 21: 40}
+    return gpio_to_physical.get(gpio, '?')
+
+def sck_to_physical(gpio):
+    """Helper to convert GPIO to physical pin for debugging"""
+    return dout_to_physical(gpio)
 
 def read_hx711(sensor, config):
     """Read force from HX711"""
     try:
         if sensor is None:
+            print(f"[HX711] Read called with None sensor")
             return 0
         
         # Try to get raw data first (more reliable for testing)
         raw_value = sensor.get_raw_data_mean(3)
         if raw_value is None:
-            print("HX711: No data received from sensor")
+            print(f"[HX711] ERROR: No data received during read")
             return 0
         
         # Get weight (applies calibration)
         value = sensor.get_weight_mean(3)
+        print(f"[HX711] Read: raw={raw_value}, calibrated={value}")
         return value if value is not None else 0
     except Exception as e:
-        print(f"Error reading HX711: {e}")
+        print(f"[HX711] ERROR reading sensor: {e}")
+        import traceback
+        traceback.print_exc()
         return 0
 
 def init_ads1115(config):
