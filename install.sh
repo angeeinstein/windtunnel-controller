@@ -202,11 +202,12 @@ setup_venv() {
     if [[ -d "$VENV_DIR" ]]; then
         print_info "Virtual environment already exists"
     else
-        $PYTHON_CMD -m venv "$VENV_DIR" || {
+        # Use --system-site-packages for Raspberry Pi 5 GPIO support
+        $PYTHON_CMD -m venv "$VENV_DIR" --system-site-packages || {
             print_error "Failed to create virtual environment"
             exit 1
         }
-        print_success "Virtual environment created"
+        print_success "Virtual environment created with system package access"
     fi
     
     # Activate virtual environment
@@ -251,6 +252,12 @@ install_sensor_libraries() {
     print_step "Installing sensor libraries..."
     
     cd "$INSTALL_DIR" || exit 1
+    
+    # Install system GPIO library for Raspberry Pi 5 support
+    print_info "Installing Raspberry Pi GPIO support..."
+    sudo apt-get install -y python3-lgpio > /dev/null 2>&1 || {
+        print_warning "Could not install python3-lgpio (may not be needed on older Pi models)"
+    }
     
     # Check if sensor library script exists
     if [[ -f "install_sensor_libraries.sh" ]]; then

@@ -139,7 +139,6 @@ install_package "adafruit-circuitpython-vl53l0x" "VL53L0X laser distance sensor"
 
 # SPI Sensors
 install_package "hx711" "HX711 load cell amplifier"
-install_package "rpi-lgpio" "RPi 5 GPIO support (lgpio)"
 install_package "adafruit-circuitpython-mcp3xxx" "MCP3008 8-channel ADC"
 install_package "adafruit-circuitpython-max31855" "MAX31855 thermocouple"
 
