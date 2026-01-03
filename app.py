@@ -443,8 +443,8 @@ def init_hx711(config):
             'chip': chip_num,
             'dout': dout,
             'sck': sck,
-            'reference_unit': float(config.get('reference_unit', 1)),
-            'offset': int(config.get('offset', 0)),
+            'reference_unit': float(config.get('reference_unit', 1.0)),
+            'offset': float(config.get('offset', 0.0)),
             'channel': config.get('channel', 'A-128')
         }
         

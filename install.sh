@@ -371,6 +371,12 @@ EOF
 
     print_success "Service file created"
     
+    # Ensure root user is in gpio group for device access
+    if ! groups root | grep -q gpio; then
+        print_info "Adding root to gpio group for device access..."
+        usermod -a -G gpio root || print_warning "Could not add root to gpio group (may not exist)"
+    fi
+    
     # Reload systemd
     print_info "Reloading systemd daemon..."
     systemctl daemon-reload
@@ -404,6 +410,12 @@ WantedBy=multi-user.target
 EOF
 
     print_success "Service file updated"
+    
+    # Ensure root user is in gpio group for device access
+    if ! groups root | grep -q gpio; then
+        print_info "Adding root to gpio group for device access..."
+        usermod -a -G gpio root || print_warning "Could not add root to gpio group (may not exist)"
+    fi
     
     # Reload systemd
     print_info "Reloading systemd daemon..."
