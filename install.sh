@@ -357,6 +357,7 @@ After=network.target
 [Service]
 Type=simple
 User=root
+SupplementaryGroups=dialout gpio
 WorkingDirectory=$INSTALL_DIR
 Environment="PATH=$VENV_DIR/bin"
 ExecStart=$VENV_DIR/bin/gunicorn --worker-class gthread --workers 1 --threads 4 --bind 0.0.0.0:80 app:app
@@ -371,11 +372,27 @@ EOF
 
     print_success "Service file created"
     
-    # Ensure root user is in gpio group for device access
-    if ! groups root | grep -q gpio; then
-        print_info "Adding root to gpio group for device access..."
-        usermod -a -G gpio root || print_warning "Could not add root to gpio group (may not exist)"
+    # Create udev rule for gpiochip device access
+    print_info "Setting up GPIO device permissions..."
+    cat > /etc/udev/rules.d/99-gpio.rules <<'UDEVRULE'
+# GPIO character device access for lgpio
+SUBSYSTEM=="gpio", KERNEL=="gpiochip*", MODE="0660", GROUP="gpio"
+UDEVRULE
+    
+    # Create gpio group if it doesn't exist
+    if ! getent group gpio > /dev/null; then
+        groupadd -r gpio
+        print_info "Created gpio group"
     fi
+    
+    # Add root to gpio group
+    usermod -a -G gpio root 2>/dev/null || true
+    
+    # Reload udev rules
+    udevadm control --reload-rules
+    udevadm trigger --subsystem-match=gpio
+    
+    print_success "GPIO permissions configured"
     
     # Reload systemd
     print_info "Reloading systemd daemon..."
@@ -397,6 +414,7 @@ After=network.target
 [Service]
 Type=simple
 User=root
+SupplementaryGroups=dialout gpio
 WorkingDirectory=$INSTALL_DIR
 Environment="PATH=$VENV_DIR/bin"
 ExecStart=$VENV_DIR/bin/gunicorn --worker-class gthread --workers 1 --threads 4 --bind 0.0.0.0:80 app:app
@@ -411,11 +429,27 @@ EOF
 
     print_success "Service file updated"
     
-    # Ensure root user is in gpio group for device access
-    if ! groups root | grep -q gpio; then
-        print_info "Adding root to gpio group for device access..."
-        usermod -a -G gpio root || print_warning "Could not add root to gpio group (may not exist)"
+    # Create udev rule for gpiochip device access
+    print_info "Setting up GPIO device permissions..."
+    cat > /etc/udev/rules.d/99-gpio.rules <<'UDEVRULE'
+# GPIO character device access for lgpio
+SUBSYSTEM=="gpio", KERNEL=="gpiochip*", MODE="0660", GROUP="gpio"
+UDEVRULE
+    
+    # Create gpio group if it doesn't exist
+    if ! getent group gpio > /dev/null; then
+        groupadd -r gpio
+        print_info "Created gpio group"
     fi
+    
+    # Add root to gpio group
+    usermod -a -G gpio root 2>/dev/null || true
+    
+    # Reload udev rules
+    udevadm control --reload-rules
+    udevadm trigger --subsystem-match=gpio
+    
+    print_success "GPIO permissions configured"
     
     # Reload systemd
     print_info "Reloading systemd daemon..."
