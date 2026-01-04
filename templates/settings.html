@@ -1630,10 +1630,10 @@
                     let html = '<div style="display: flex; flex-direction: column; gap: 8px;">';
                     data.networks.forEach(network => {
                         const signalBars = getSignalBars(network.signal_percent);
-                        const lockIcon = network.encrypted ? '🔒' : '🔓';
+                        const lockIcon = network.encrypted ? '&#128274;' : '&#128275;';
                         const isCurrent = network.is_current;
                         const borderColor = isCurrent ? 'var(--success-color)' : 'var(--border-color)';
-                        const connectedBadge = isCurrent ? '<span style="color: var(--success-color); font-size: 0.85rem; font-weight: 600;">✓ Connected</span>' : '';
+                        const connectedBadge = isCurrent ? '<span style="color: var(--success-color); font-size: 0.85rem; font-weight: 600;">&#10003; Connected</span>' : '';
                         html += `
                             <div onclick="${isCurrent ? '' : "connectToNetwork('" + network.ssid + "', " + network.encrypted + ")" }" 
                                  style="padding: 16px; background: var(--card-bg); border-radius: 8px; cursor: ${isCurrent ? 'default' : 'pointer'}; 
@@ -1703,7 +1703,7 @@
                 const data = await response.json();
                 
                 if (data.connected) {
-                    statusEl.innerHTML = '<span style="color: var(--success);">✓ ' + data.message + '</span>';
+                    statusEl.innerHTML = '<span style="color: var(--success);">&#10003; ' + data.message + '</span>';
                 } else {
                     statusEl.innerHTML = '<span style="color: var(--danger);">✗ ' + data.message + '</span>';
                 }
@@ -1713,10 +1713,10 @@
         }
 
         function getSignalBars(percent) {
-            if (percent >= 75) return '📶'; // Full signal
-            if (percent >= 50) return '📶'; // Good signal
-            if (percent >= 25) return '📶'; // Fair signal
-            return '📶'; // Weak signal
+            if (percent >= 75) return '▂▄▆█'; // Full signal
+            if (percent >= 50) return '▂▄▆'; // Good signal
+            if (percent >= 25) return '▂▄'; // Fair signal
+            return '▂'; // Weak signal
         }
 
         // Update system
