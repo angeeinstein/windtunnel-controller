@@ -1426,6 +1426,12 @@
                     // Fallback to simple number input
                     html += `<input type="number" id="hw_${field.name}" value="${value}" min="2" max="27" style="width: 100%; padding: 10px; border: 2px solid var(--border-color); border-radius: 6px; font-size: 1rem;">`;
                 }
+            } else if (field.type === 'info') {
+                // Read-only informational field (no input needed)
+                html += `<div style="padding: 12px; background: var(--bg-secondary); border: 2px solid var(--border-color); border-radius: 6px; font-family: monospace; color: var(--primary-color); font-size: 0.95rem;">`;
+                html += field.value;
+                html += `</div>`;
+                // Info fields don't need an id since they're not saved
             } else if (field.type === 'select') {
                 html += `<select id="hw_${field.name}" style="width: 100%; padding: 10px; border: 2px solid var(--border-color); border-radius: 6px; font-size: 1rem;">`;
                 field.options.forEach(option => {

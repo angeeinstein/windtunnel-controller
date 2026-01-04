@@ -195,6 +195,7 @@ SENSOR_TYPES = {
         'category': 'hardware',
         'description': 'Precision analog-to-digital converter',
         'fields': [
+            {'name': 'i2c_info', 'label': 'I2C Connection', 'type': 'info', 'value': 'SDA: GPIO2 (Pin 3) • SCL: GPIO3 (Pin 5)', 'description': 'I2C pins are shared between all I2C sensors'},
             {'name': 'address', 'label': 'I2C Address', 'type': 'select', 'options': ['0x48', '0x49', '0x4A', '0x4B'], 'default': '0x48'},
             {'name': 'channel', 'label': 'Channel', 'type': 'select', 'options': ['0', '1', '2', '3'], 'default': '0'},
             {'name': 'gain', 'label': 'Gain', 'type': 'select', 'options': ['2/3', '1', '2', '4', '8', '16'], 'default': '1', 
@@ -207,6 +208,7 @@ SENSOR_TYPES = {
         'category': 'hardware',
         'description': 'Barometric pressure and temperature sensor',
         'fields': [
+            {'name': 'i2c_info', 'label': 'I2C Connection', 'type': 'info', 'value': 'SDA: GPIO2 (Pin 3) • SCL: GPIO3 (Pin 5)', 'description': 'I2C pins are shared between all I2C sensors'},
             {'name': 'address', 'label': 'I2C Address', 'type': 'select', 'options': ['0x76', '0x77'], 'default': '0x76'},
             {'name': 'sea_level_pressure', 'label': 'Sea Level Pressure (hPa)', 'type': 'number', 'default': 1013.25, 'step': 0.01}
         ]
@@ -216,6 +218,7 @@ SENSOR_TYPES = {
         'category': 'hardware',
         'description': 'Differential pressure sensor for pitot tube airspeed',
         'fields': [
+            {'name': 'i2c_info', 'label': 'I2C Connection', 'type': 'info', 'value': 'SDA: GPIO2 (Pin 3) • SCL: GPIO3 (Pin 5)', 'description': 'I2C pins are shared between all I2C sensors'},
             {'name': 'address', 'label': 'I2C Address', 'type': 'select', 'options': ['0x25', '0x26'], 'default': '0x25'},
             {'name': 'averaging', 'label': 'Averaging Mode', 'type': 'select', 
              'options': ['none', 'until_stable', 'update_2s'], 'default': 'until_stable',
@@ -246,7 +249,8 @@ SENSOR_TYPES = {
         'category': 'hardware',
         'description': '10-bit analog-to-digital converter',
         'fields': [
-            {'name': 'cs_pin', 'label': 'CS (Chip Select) Pin (GPIO #)', 'type': 'gpio_select', 'default': 8, 'pin_type': 'gpio'},
+            {'name': 'spi_info', 'label': 'SPI Bus Connection (Shared)', 'type': 'info', 'value': 'MISO: GPIO9 (Pin 21) • MOSI: GPIO10 (Pin 19) • SCLK: GPIO11 (Pin 23)', 'description': 'SPI bus pins are shared between all SPI sensors'},
+            {'name': 'cs_pin', 'label': 'CS (Chip Select) Pin (GPIO #)', 'type': 'gpio_select', 'default': 8, 'pin_type': 'gpio', 'description': 'Each SPI sensor needs a unique CS pin'},
             {'name': 'channel', 'label': 'Channel', 'type': 'select', 'options': ['0', '1', '2', '3', '4', '5', '6', '7'], 'default': '0'},
             {'name': 'vref', 'label': 'Reference Voltage', 'type': 'number', 'default': 3.3, 'step': 0.1}
         ]
@@ -256,6 +260,7 @@ SENSOR_TYPES = {
         'category': 'hardware',
         'description': '6-axis motion tracking sensor',
         'fields': [
+            {'name': 'i2c_info', 'label': 'I2C Connection', 'type': 'info', 'value': 'SDA: GPIO2 (Pin 3) • SCL: GPIO3 (Pin 5)', 'description': 'I2C pins are shared between all I2C sensors'},
             {'name': 'address', 'label': 'I2C Address', 'type': 'select', 'options': ['0x68', '0x69'], 'default': '0x68'},
             {'name': 'output', 'label': 'Output Value', 'type': 'select', 
              'options': ['accel_x', 'accel_y', 'accel_z', 'gyro_x', 'gyro_y', 'gyro_z', 'temperature'], 
@@ -267,6 +272,7 @@ SENSOR_TYPES = {
         'category': 'hardware',
         'description': 'I2C gauge pressure sensor (measures relative to atmospheric pressure)',
         'fields': [
+            {'name': 'i2c_info', 'label': 'I2C Connection', 'type': 'info', 'value': 'SDA: GPIO2 (Pin 3) • SCL: GPIO3 (Pin 5)', 'description': 'I2C pins are shared between all I2C sensors'},
             {'name': 'address', 'label': 'I2C Address', 'type': 'select', 'options': ['0x6D', '0x6C', '0x6E', '0x6F'], 'default': '0x6D'},
             {'name': 'pressure_range', 'label': 'Pressure Range', 'type': 'select', 
              'options': [
@@ -292,6 +298,7 @@ SENSOR_TYPES = {
         'category': 'hardware',
         'description': 'Environmental sensor with pressure, temperature, and humidity',
         'fields': [
+            {'name': 'i2c_info', 'label': 'I2C Connection', 'type': 'info', 'value': 'SDA: GPIO2 (Pin 3) • SCL: GPIO3 (Pin 5)', 'description': 'I2C pins are shared between all I2C sensors'},
             {'name': 'address', 'label': 'I2C Address', 'type': 'select', 'options': ['0x76', '0x77'], 'default': '0x77'},
             {'name': 'output', 'label': 'Output Value', 'type': 'select',
              'options': ['pressure', 'temperature', 'humidity', 'altitude'],
@@ -304,6 +311,7 @@ SENSOR_TYPES = {
         'category': 'hardware',
         'description': 'High-side current sensor for motor power measurement',
         'fields': [
+            {'name': 'i2c_info', 'label': 'I2C Connection', 'type': 'info', 'value': 'SDA: GPIO2 (Pin 3) • SCL: GPIO3 (Pin 5)', 'description': 'I2C pins are shared between all I2C sensors'},
             {'name': 'address', 'label': 'I2C Address', 'type': 'select', 
              'options': ['0x40', '0x41', '0x44', '0x45'], 'default': '0x40'},
             {'name': 'output', 'label': 'Output Value', 'type': 'select',
@@ -317,6 +325,7 @@ SENSOR_TYPES = {
         'category': 'hardware',
         'description': 'Laser ranging sensor for precise distance measurement',
         'fields': [
+            {'name': 'i2c_info', 'label': 'I2C Connection', 'type': 'info', 'value': 'SDA: GPIO2 (Pin 3) • SCL: GPIO3 (Pin 5)', 'description': 'I2C pins are shared between all I2C sensors'},
             {'name': 'address', 'label': 'I2C Address', 'type': 'select', 'options': ['0x29'], 'default': '0x29'},
             {'name': 'mode', 'label': 'Ranging Mode', 'type': 'select',
              'options': ['better_accuracy', 'long_range', 'high_speed'],
