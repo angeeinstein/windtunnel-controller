@@ -50,11 +50,20 @@
 
             <!-- Control Panel (for future expansion) -->
             <div class="control-panel">
-                <h2>Controls</h2>
+                <h2>Fan Control</h2>
+                <div class="fan-status" id="fanStatus" style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px; padding: 12px; background: var(--card-bg); border-radius: 8px;">
+                    <div id="fanIndicator" style="width: 16px; height: 16px; border-radius: 50%; background: var(--text-secondary);"></div>
+                    <span id="fanStatusText" style="color: var(--text-secondary); font-weight: 600;">Fan: OFF</span>
+                </div>
+                <div class="speed-control" style="margin-bottom: 16px;">
+                    <label for="fanSpeed" style="display: block; margin-bottom: 8px; font-weight: 600;">Speed: <span id="speedValue">0</span>%</label>
+                    <input type="range" id="fanSpeed" min="0" max="100" value="0" 
+                           style="width: 100%; height: 8px; border-radius: 4px; background: var(--border-color); outline: none; -webkit-appearance: none;"
+                           oninput="updateSpeedDisplay(this.value)">
+                </div>
                 <div class="controls-grid">
-                    <button class="control-btn" id="startBtn" disabled>Start</button>
-                    <button class="control-btn" id="stopBtn" disabled>Stop</button>
-                    <button class="control-btn" id="resetBtn" disabled>Reset</button>
+                    <button class="control-btn" id="startBtn" onclick="startFan()">Start</button>
+                    <button class="control-btn danger-btn" id="stopBtn" onclick="stopFan()">Stop</button>
                 </div>
             </div>
         </main>

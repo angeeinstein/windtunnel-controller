@@ -1023,6 +1023,85 @@ async function refreshUSBDrives() {
     await loadUSBDrives();
 }
 
+// Fan Control Functions
+function updateSpeedDisplay(value) {
+    document.getElementById('speedValue').textContent = value;
+}
+
+async function startFan() {
+    const speed = document.getElementById('fanSpeed').value;
+    try {
+        const response = await fetch('/api/fan/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ speed: parseInt(speed) })
+        });
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            updateFanStatus(true, speed);
+        } else {
+            alert('Failed to start fan: ' + data.message);
+        }
+    } catch (error) {
+        console.error('Error starting fan:', error);
+        alert('Failed to start fan: ' + error.message);
+    }
+}
+
+async function stopFan() {
+    try {
+        const response = await fetch('/api/fan/stop', {
+            method: 'POST'
+        });
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            updateFanStatus(false, 0);
+        } else {
+            alert('Failed to stop fan: ' + data.message);
+        }
+    } catch (error) {
+        console.error('Error stopping fan:', error);
+        alert('Failed to stop fan: ' + error.message);
+    }
+}
+
+function updateFanStatus(isRunning, speed) {
+    const indicator = document.getElementById('fanIndicator');
+    const statusText = document.getElementById('fanStatusText');
+    
+    if (isRunning) {
+        indicator.style.background = 'var(--success-color)';
+        indicator.style.animation = 'pulse 1.5s ease-in-out infinite';
+        statusText.style.color = 'var(--success-color)';
+        statusText.textContent = `Fan: ON (${speed}%)`;
+    } else {
+        indicator.style.background = 'var(--text-secondary)';
+        indicator.style.animation = 'none';
+        statusText.style.color = 'var(--text-secondary)';
+        statusText.textContent = 'Fan: OFF';
+    }
+}
+
+// Load fan status on page load
+async function loadFanStatus() {
+    try {
+        const response = await fetch('/api/fan/status');
+        const data = await response.json();
+        
+        if (data.running) {
+            document.getElementById('fanSpeed').value = data.speed;
+            document.getElementById('speedValue').textContent = data.speed;
+            updateFanStatus(true, data.speed);
+        } else {
+            updateFanStatus(false, 0);
+        }
+    } catch (error) {
+        console.error('Error loading fan status:', error);
+    }
+}
+
 // Close modal when clicking outside
 document.addEventListener('click', function(event) {
     const exportModal = document.getElementById('exportModal');
@@ -1034,4 +1113,5 @@ document.addEventListener('click', function(event) {
 // Initialize on page load
 loadConfiguration();
 updateWiFiStatus();
+loadFanStatus();
 

@@ -337,6 +337,14 @@ SENSOR_TYPES = {
 # Sensor initialization cache and handlers
 sensor_instances = {}  # Cache initialized sensors {sensor_id: instance}
 sensor_last_values = {}  # Cache last reading from each sensor {sensor_id: value}
+
+# Fan control state
+fan_state = {
+    'running': False,
+    'speed': 0,  # 0-100%
+    'pwm_pin': 18,  # GPIO18 (Pin 12) - Hardware PWM0
+    'pwm_instance': None
+}
 available_sensor_libraries = {}  # Track which libraries are installed
 import importlib
 import math
@@ -626,6 +634,102 @@ def cleanup_hx711(sensor):
                 pass
     except Exception as e:
         hx711_logger.error(f"Error cleaning up HX711: {e}")
+
+# ==================== FAN PWM CONTROL ====================
+
+def init_fan_pwm():
+    """Initialize PWM for fan control"""
+    global fan_state
+    try:
+        import lgpio
+        
+        pin = fan_state['pwm_pin']
+        
+        # Open GPIO chip
+        handle = lgpio.gpiochip_open(0)
+        
+        # Set pin as output
+        lgpio.gpio_claim_output(handle, pin)
+        
+        # Initialize PWM at 25kHz (typical for 0-10V dimmer modules)
+        # Most 0-10V PWM modules work well with 1-25kHz
+        frequency = 1000  # 1kHz
+        
+        fan_state['pwm_instance'] = {
+            'handle': handle,
+            'pin': pin,
+            'frequency': frequency
+        }
+        
+        print(f"✓ Fan PWM initialized on GPIO{pin} (Pin 12) at {frequency}Hz")
+        return True
+    except Exception as e:
+        print(f"✗ Failed to initialize fan PWM: {e}")
+        return False
+
+def set_fan_speed(speed_percent):
+    """Set fan speed (0-100%)"""
+    global fan_state
+    try:
+        import lgpio
+        
+        if fan_state['pwm_instance'] is None:
+            if not init_fan_pwm():
+                return False
+        
+        pwm = fan_state['pwm_instance']
+        handle = pwm['handle']
+        pin = pwm['pin']
+        frequency = pwm['frequency']
+        
+        # Clamp speed to 0-100
+        speed_percent = max(0, min(100, speed_percent))
+        
+        # Calculate duty cycle (0-100% maps to 0-100% duty cycle)
+        duty_cycle = speed_percent
+        
+        if speed_percent == 0:
+            # Turn off PWM
+            lgpio.tx_pwm(handle, pin, frequency, 0)
+            fan_state['running'] = False
+        else:
+            # Set PWM duty cycle
+            lgpio.tx_pwm(handle, pin, frequency, duty_cycle)
+            fan_state['running'] = True
+        
+        fan_state['speed'] = speed_percent
+        print(f"Fan speed set to {speed_percent}% (duty cycle: {duty_cycle}%)")
+        return True
+        
+    except Exception as e:
+        print(f"Error setting fan speed: {e}")
+        return False
+
+def cleanup_fan_pwm():
+    """Clean up fan PWM resources"""
+    global fan_state
+    try:
+        if fan_state['pwm_instance'] is not None:
+            import lgpio
+            pwm = fan_state['pwm_instance']
+            handle = pwm['handle']
+            pin = pwm['pin']
+            
+            # Stop PWM
+            lgpio.tx_pwm(handle, pin, 0, 0)
+            
+            # Free GPIO
+            lgpio.gpio_free(handle, pin)
+            
+            # Close chip
+            lgpio.gpiochip_close(handle)
+            
+            fan_state['pwm_instance'] = None
+            fan_state['running'] = False
+            fan_state['speed'] = 0
+            print(f"Fan PWM cleaned up (GPIO{pin})")
+    except Exception as e:
+        print(f"Error cleaning up fan PWM: {e}")
 
 def init_ads1115(config):
     """Initialize ADS1115 ADC"""
@@ -1595,6 +1699,15 @@ def get_available_pins():
     sensors = current_settings.get('sensors', [])
     occupied_pins = {}  # {gpio_num: {'sensor_id', 'sensor_name', 'pin_field', 'shareable'}}
     
+    # Reserve fan PWM pin
+    fan_pin = fan_state['pwm_pin']
+    occupied_pins[fan_pin] = {
+        'sensor_id': 'system',
+        'sensor_name': 'Fan Control',
+        'pin_field': 'PWM Output',
+        'shareable': False
+    }
+    
     for sensor in sensors:
         if sensor.get('id') == current_sensor_id:
             continue  # Skip current sensor being edited
@@ -2138,6 +2251,55 @@ def wifi_connect():
                 }), 500
     except Exception as e:
         print(f"Error connecting to WiFi: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/fan/status', methods=['GET'])
+def fan_status():
+    """Get current fan status"""
+    return jsonify({
+        'running': fan_state['running'],
+        'speed': fan_state['speed'],
+        'pwm_pin': fan_state['pwm_pin']
+    })
+
+@app.route('/api/fan/start', methods=['POST'])
+def fan_start():
+    """Start fan at specified speed"""
+    try:
+        data = request.get_json()
+        speed = int(data.get('speed', 50))
+        
+        if speed < 0 or speed > 100:
+            return jsonify({'status': 'error', 'message': 'Speed must be between 0 and 100'}), 400
+        
+        if set_fan_speed(speed):
+            return jsonify({
+                'status': 'success',
+                'message': f'Fan started at {speed}%',
+                'speed': speed,
+                'running': True
+            })
+        else:
+            return jsonify({'status': 'error', 'message': 'Failed to start fan'}), 500
+    except Exception as e:
+        print(f"Error starting fan: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/fan/stop', methods=['POST'])
+def fan_stop():
+    """Stop fan"""
+    try:
+        if set_fan_speed(0):
+            return jsonify({
+                'status': 'success',
+                'message': 'Fan stopped',
+                'speed': 0,
+                'running': False
+            })
+        else:
+            return jsonify({'status': 'error', 'message': 'Failed to stop fan'}), 500
+    except Exception as e:
+        print(f"Error stopping fan: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/api/internet/check', methods=['GET'])

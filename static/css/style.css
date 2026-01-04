@@ -598,6 +598,17 @@ footer {
     }
 }
 
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.6;
+        transform: scale(1.1);
+    }
+}
+
 @media (max-width: 1199px) {
     .data-grid {
         grid-template-columns: repeat(2, 1fr);
