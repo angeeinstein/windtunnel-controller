@@ -1835,33 +1835,76 @@ def wifi_connect():
         if not ssid:
             return jsonify({'status': 'error', 'message': 'SSID is required'}), 400
         
+        # Check if already connected to this network
+        check_result = subprocess.run(['/usr/bin/nmcli', '-t', '-f', 'ACTIVE,SSID', 'dev', 'wifi'], 
+                                     capture_output=True, text=True, timeout=5)
+        if check_result.returncode == 0:
+            for line in check_result.stdout.split('\n'):
+                if line.startswith('yes:') and ssid in line:
+                    return jsonify({
+                        'status': 'success',
+                        'message': f'Already connected to {ssid}'
+                    })
+        
         # Use nmcli to connect (NetworkManager)
-        # If running as root (UID 0), use nmcli directly; otherwise use sudo
-        if os_module.getuid() == 0:
-            # Running as root, no sudo needed
-            if password:
-                cmd = ['/usr/bin/nmcli', 'dev', 'wifi', 'connect', ssid, 'password', password]
+        # For WPA/WPA2 networks with password, we need to create a proper connection profile
+        if password:
+            # Delete existing connection if it exists to avoid conflicts
+            subprocess.run(['/usr/bin/nmcli', 'connection', 'delete', ssid], 
+                         capture_output=True, text=True, timeout=5)
+            
+            # Create new connection with proper security settings
+            if os_module.getuid() == 0:
+                cmd = ['/usr/bin/nmcli', 'connection', 'add', 'type', 'wifi', 
+                       'con-name', ssid, 'ifname', 'wlan0', 'ssid', ssid,
+                       'wifi-sec.key-mgmt', 'wpa-psk', 'wifi-sec.psk', password]
             else:
-                cmd = ['/usr/bin/nmcli', 'dev', 'wifi', 'connect', ssid]
+                cmd = ['/usr/bin/sudo', '/usr/bin/nmcli', 'connection', 'add', 'type', 'wifi',
+                       'con-name', ssid, 'ifname', 'wlan0', 'ssid', ssid,
+                       'wifi-sec.key-mgmt', 'wpa-psk', 'wifi-sec.psk', password]
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            if result.returncode != 0:
+                return jsonify({
+                    'status': 'error',
+                    'message': f'Failed to create connection: {result.stderr}'
+                }), 500
+            
+            # Activate the connection
+            if os_module.getuid() == 0:
+                activate_cmd = ['/usr/bin/nmcli', 'connection', 'up', ssid]
+            else:
+                activate_cmd = ['/usr/bin/sudo', '/usr/bin/nmcli', 'connection', 'up', ssid]
+            
+            activate_result = subprocess.run(activate_cmd, capture_output=True, text=True, timeout=30)
+            if activate_result.returncode == 0:
+                return jsonify({
+                    'status': 'success',
+                    'message': f'Successfully connected to {ssid}'
+                })
+            else:
+                return jsonify({
+                    'status': 'error',
+                    'message': f'Failed to activate connection: {activate_result.stderr}'
+                }), 500
         else:
-            # Not root, try with sudo
-            if password:
-                cmd = ['/usr/bin/sudo', '/usr/bin/nmcli', 'dev', 'wifi', 'connect', ssid, 'password', password]
+            # Open network without password
+            if os_module.getuid() == 0:
+                cmd = ['/usr/bin/nmcli', 'dev', 'wifi', 'connect', ssid]
             else:
                 cmd = ['/usr/bin/sudo', '/usr/bin/nmcli', 'dev', 'wifi', 'connect', ssid]
-        
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        
-        if result.returncode == 0:
-            return jsonify({
-                'status': 'success',
-                'message': f'Successfully connected to {ssid}'
-            })
-        else:
-            return jsonify({
-                'status': 'error',
-                'message': f'Failed to connect: {result.stderr}'
-            }), 500
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            if result.returncode == 0:
+                return jsonify({
+                    'status': 'success',
+                    'message': f'Successfully connected to {ssid}'
+                })
+            else:
+                return jsonify({
+                    'status': 'error',
+                    'message': f'Failed to connect: {result.stderr}'
+                }), 500
     except Exception as e:
         print(f"Error connecting to WiFi: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
