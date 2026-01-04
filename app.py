@@ -1724,17 +1724,38 @@ def wifi_scan():
     try:
         import subprocess
         import re
+        import os
         
-        # Check if WiFi interface exists
-        try:
-            iw_result = subprocess.run(['iw', 'dev'], capture_output=True, text=True, timeout=2)
-            if 'Interface' not in iw_result.stdout:
-                return jsonify({'networks': [], 'error': 'No WiFi adapter found on this system'})
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            return jsonify({'networks': [], 'error': 'WiFi not available (no wireless hardware detected)'})
+        # Check if WiFi interface exists - try multiple methods
+        wifi_interface = None
+        
+        # Method 1: Check /sys/class/net for wireless interfaces
+        if os.path.exists('/sys/class/net'):
+            for iface in os.listdir('/sys/class/net'):
+                if os.path.exists(f'/sys/class/net/{iface}/wireless'):
+                    wifi_interface = iface
+                    break
+        
+        # Method 2: Try iw dev if interface not found
+        if not wifi_interface:
+            try:
+                iw_result = subprocess.run(['iw', 'dev'], capture_output=True, text=True, timeout=5)
+                if iw_result.returncode == 0 and 'Interface' in iw_result.stdout:
+                    # Extract interface name (e.g., wlan0)
+                    for line in iw_result.stdout.split('\n'):
+                        if 'Interface' in line:
+                            wifi_interface = line.split('Interface')[1].strip()
+                            break
+            except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+                pass
+        
+        if not wifi_interface:
+            return jsonify({'networks': [], 'error': 'No WiFi adapter found on this system'})
+        
+        print(f"Found WiFi interface: {wifi_interface}")
         
         # Use iwlist to scan for networks (requires sudo or permissions)
-        result = subprocess.run(['sudo', 'iwlist', 'wlan0', 'scan'], 
+        result = subprocess.run(['sudo', 'iwlist', wifi_interface, 'scan'], 
                               capture_output=True, text=True, timeout=10)
         output = result.stdout
         
