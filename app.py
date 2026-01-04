@@ -1682,17 +1682,35 @@ def wifi_status():
     try:
         import subprocess
         import re
+        import os
         
-        # Check if WiFi interface exists
-        try:
-            iw_result = subprocess.run(['iw', 'dev'], capture_output=True, text=True, timeout=2)
-            if 'Interface' not in iw_result.stdout:
-                return jsonify({'connected': False, 'no_adapter': True, 'message': 'No WiFi adapter found'})
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            return jsonify({'connected': False, 'no_adapter': True, 'message': 'WiFi not available on this system'})
+        # Check if WiFi interface exists - try multiple methods
+        wifi_interface = None
+        
+        # Method 1: Check /sys/class/net for wireless interfaces
+        if os.path.exists('/sys/class/net'):
+            for iface in os.listdir('/sys/class/net'):
+                if os.path.exists(f'/sys/class/net/{iface}/wireless'):
+                    wifi_interface = iface
+                    break
+        
+        # Method 2: Try iw dev if interface not found
+        if not wifi_interface:
+            try:
+                iw_result = subprocess.run(['iw', 'dev'], capture_output=True, text=True, timeout=5)
+                if iw_result.returncode == 0 and 'Interface' in iw_result.stdout:
+                    for line in iw_result.stdout.split('\n'):
+                        if 'Interface' in line:
+                            wifi_interface = line.split('Interface')[1].strip()
+                            break
+            except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+                pass
+        
+        if not wifi_interface:
+            return jsonify({'connected': False, 'no_adapter': True, 'message': 'No WiFi adapter found'})
         
         # Use iwconfig to get WiFi info (Linux)
-        result = subprocess.run(['iwconfig'], capture_output=True, text=True, timeout=5)
+        result = subprocess.run(['iwconfig', wifi_interface], capture_output=True, text=True, timeout=5)
         output = result.stdout
         
         # Parse WiFi info
