@@ -2434,7 +2434,7 @@ def handle_connect():
     with thread_lock:
         if background_thread is None:
             background_thread = socketio.start_background_task(background_data_updater)
-    emit('data_update', generate_mock_data())
+    # Don't emit immediately - background thread will send data within 200ms
 
 @socketio.on('disconnect')
 def handle_disconnect():
