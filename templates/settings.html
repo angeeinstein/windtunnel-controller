@@ -1589,17 +1589,21 @@
                     let html = '<div style="display: flex; flex-direction: column; gap: 8px;">';
                     data.networks.forEach(network => {
                         const signalBars = getSignalBars(network.signal_percent);
-                        const lockIcon = network.encrypted ? '🔒' : '';
+                        const lockIcon = network.encrypted ? '🔒' : '🔓';
+                        const isCurrent = network.is_current;
+                        const borderColor = isCurrent ? 'var(--success-color)' : 'var(--border-color)';
+                        const connectedBadge = isCurrent ? '<span style="color: var(--success-color); font-size: 0.85rem; font-weight: 600;">✓ Connected</span>' : '';
                         html += `
-                            <div onclick="connectToNetwork('${network.ssid}', ${network.encrypted})" 
-                                 style="padding: 16px; background: var(--card-bg); border-radius: 8px; cursor: pointer; 
-                                        border: 2px solid var(--border-color); transition: all 0.2s;"
-                                 onmouseover="this.style.borderColor='var(--primary-color)'" 
-                                 onmouseout="this.style.borderColor='var(--border-color)'">
+                            <div onclick="${isCurrent ? '' : "connectToNetwork('" + network.ssid + "', " + network.encrypted + ")" }" 
+                                 style="padding: 16px; background: var(--card-bg); border-radius: 8px; cursor: ${isCurrent ? 'default' : 'pointer'}; 
+                                        border: 2px solid ${borderColor}; transition: all 0.2s;"
+                                 ${isCurrent ? '' : "onmouseover=\"this.style.borderColor='var(--primary-color)'\" onmouseout=\"this.style.borderColor='var(--border-color)'\""}>
                                 <div style="display: flex; align-items: center; gap: 12px;">
                                     <span style="font-size: 1.2rem;">${signalBars}</span>
                                     <div style="flex: 1;">
-                                        <div style="font-weight: 600; font-size: 1rem;">${network.ssid || '(Hidden Network)'} ${lockIcon}</div>
+                                        <div style="font-weight: 600; font-size: 1rem; display: flex; align-items: center; gap: 8px;">
+                                            ${lockIcon} ${network.ssid || '(Hidden Network)'} ${connectedBadge}
+                                        </div>
                                         <div style="font-size: 0.85rem; color: var(--text-secondary);">
                                             Signal: ${network.signal_percent}% • ${network.security || 'Open'}
                                         </div>

@@ -1814,10 +1814,32 @@ def wifi_scan():
         if current_network and 'ssid' in current_network:
             networks.append(current_network)
         
-        # Sort by signal strength
+        # Get current connected network
+        current_ssid = None
+        try:
+            iwconfig_result = subprocess.run(['iwconfig', wifi_interface], 
+                                            capture_output=True, text=True, timeout=5)
+            ssid_match = re.search(r'ESSID:"([^"]*)"', iwconfig_result.stdout)
+            if ssid_match and ssid_match.group(1):
+                current_ssid = ssid_match.group(1)
+        except Exception:
+            pass
+        
+        # Deduplicate networks by SSID, keeping the one with strongest signal
+        unique_networks = {}
+        for network in networks:
+            ssid = network.get('ssid', '')
+            if ssid and (ssid not in unique_networks or 
+                        network.get('signal_percent', 0) > unique_networks[ssid].get('signal_percent', 0)):
+                unique_networks[ssid] = network
+                # Mark if this is the current network
+                network['is_current'] = (ssid == current_ssid)
+        
+        # Convert back to list and sort by signal strength
+        networks = list(unique_networks.values())
         networks.sort(key=lambda x: x.get('signal_percent', 0), reverse=True)
         
-        return jsonify({'networks': networks})
+        return jsonify({'networks': networks, 'current_ssid': current_ssid})
     except Exception as e:
         print(f"Error scanning WiFi: {e}")
         return jsonify({'networks': [], 'error': str(e)})
