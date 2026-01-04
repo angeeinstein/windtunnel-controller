@@ -1754,9 +1754,17 @@ def wifi_scan():
         
         print(f"Found WiFi interface: {wifi_interface}")
         
-        # Use iwlist to scan for networks (requires sudo or permissions)
-        result = subprocess.run(['sudo', 'iwlist', wifi_interface, 'scan'], 
-                              capture_output=True, text=True, timeout=10)
+        # Use iwlist to scan for networks
+        # If running as root (UID 0), use iwlist directly; otherwise use sudo
+        import os as os_module
+        if os_module.getuid() == 0:
+            # Running as root, no sudo needed
+            result = subprocess.run(['/usr/sbin/iwlist', wifi_interface, 'scan'], 
+                                  capture_output=True, text=True, timeout=10)
+        else:
+            # Not root, try with sudo
+            result = subprocess.run(['/usr/bin/sudo', '/usr/sbin/iwlist', wifi_interface, 'scan'], 
+                                  capture_output=True, text=True, timeout=10)
         output = result.stdout
         
         # Check for permission errors
@@ -1819,6 +1827,7 @@ def wifi_connect():
     """Connect to a WiFi network."""
     try:
         import subprocess
+        import os as os_module
         data = request.get_json()
         ssid = data.get('ssid')
         password = data.get('password', '')
@@ -1827,10 +1836,19 @@ def wifi_connect():
             return jsonify({'status': 'error', 'message': 'SSID is required'}), 400
         
         # Use nmcli to connect (NetworkManager)
-        if password:
-            cmd = ['sudo', 'nmcli', 'dev', 'wifi', 'connect', ssid, 'password', password]
+        # If running as root (UID 0), use nmcli directly; otherwise use sudo
+        if os_module.getuid() == 0:
+            # Running as root, no sudo needed
+            if password:
+                cmd = ['/usr/bin/nmcli', 'dev', 'wifi', 'connect', ssid, 'password', password]
+            else:
+                cmd = ['/usr/bin/nmcli', 'dev', 'wifi', 'connect', ssid]
         else:
-            cmd = ['sudo', 'nmcli', 'dev', 'wifi', 'connect', ssid]
+            # Not root, try with sudo
+            if password:
+                cmd = ['/usr/bin/sudo', '/usr/bin/nmcli', 'dev', 'wifi', 'connect', ssid, 'password', password]
+            else:
+                cmd = ['/usr/bin/sudo', '/usr/bin/nmcli', 'dev', 'wifi', 'connect', ssid]
         
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
         
