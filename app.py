@@ -343,8 +343,13 @@ fan_state = {
     'running': False,
     'speed': 0,  # 0-100%
     'pwm_pin': 18,  # GPIO18 (Pin 12) - Hardware PWM0
-    'pwm_instance': None
+    'pwm_instance': None,
+    'last_heartbeat': None  # Track last client heartbeat
 }
+
+# Safety timeout configuration (in seconds)
+FAN_SAFETY_TIMEOUT = 10  # Stop fan if no heartbeat for 10 seconds
+
 available_sensor_libraries = {}  # Track which libraries are installed
 import importlib
 import math
@@ -730,6 +735,25 @@ def cleanup_fan_pwm():
             print(f"Fan PWM cleaned up (GPIO{pin})")
     except Exception as e:
         print(f"Error cleaning up fan PWM: {e}")
+
+def check_fan_safety():
+    """Monitor client heartbeat and stop fan if connection is lost"""
+    import time
+    while True:
+        try:
+            if fan_state['running'] and fan_state['last_heartbeat'] is not None:
+                time_since_heartbeat = time.time() - fan_state['last_heartbeat']
+                if time_since_heartbeat > FAN_SAFETY_TIMEOUT:
+                    print(f"⚠️ No client heartbeat for {time_since_heartbeat:.1f}s - Emergency stopping fan")
+                    set_fan_speed(0)
+                    socketio.emit('fan_emergency_stop', {
+                        'reason': 'Client connection lost',
+                        'timeout': FAN_SAFETY_TIMEOUT
+                    })
+            time.sleep(1)  # Check every second
+        except Exception as e:
+            print(f"Error in fan safety monitor: {e}")
+            time.sleep(1)
 
 def init_ads1115(config):
     """Initialize ADS1115 ADC"""
@@ -2256,10 +2280,16 @@ def wifi_connect():
 @app.route('/api/fan/status', methods=['GET'])
 def fan_status():
     """Get current fan status"""
+    import time
+    last_hb = fan_state.get('last_heartbeat')
     return jsonify({
         'running': fan_state['running'],
         'speed': fan_state['speed'],
-        'pwm_pin': fan_state['pwm_pin']
+        'pwm_pin': fan_state['pwm_pin'],
+        'safety_enabled': True,
+        'last_heartbeat': last_hb,
+        'heartbeat_age': time.time() - last_hb if last_hb else None,
+        'safety_timeout': FAN_SAFETY_TIMEOUT
     })
 
 @app.route('/api/fan/start', methods=['POST'])
@@ -2906,6 +2936,11 @@ def handle_connect():
     """Handle client connection."""
     global background_thread
     print('Client connected')
+    
+    # Update heartbeat timestamp
+    import time
+    fan_state['last_heartbeat'] = time.time()
+    
     with thread_lock:
         if background_thread is None:
             background_thread = socketio.start_background_task(background_data_updater)
@@ -2916,6 +2951,13 @@ def handle_disconnect():
     """Handle client disconnection."""
     print('Client disconnected')
 
+@socketio.on('heartbeat')
+def handle_heartbeat():
+    """Handle client heartbeat for fan safety monitoring"""
+    import time
+    fan_state['last_heartbeat'] = time.time()
+    return {'status': 'ok', 'timestamp': time.time()}
+
 @socketio.on('request_data')
 def handle_data_request():
     """Handle explicit data requests from clients."""
@@ -2924,6 +2966,12 @@ def handle_data_request():
 if __name__ == '__main__':
     # Initialize database on startup
     init_database()
+    
+    # Start fan safety monitoring thread
+    import threading
+    safety_thread = threading.Thread(target=check_fan_safety, daemon=True)
+    safety_thread.start()
+    print("Fan safety monitoring started")
     
     # Run on all interfaces for Raspberry Pi access
     # Use port 80 (standard HTTP port), disable debug in production

@@ -31,6 +31,10 @@ let graphScrollOffset = 0; // Scroll back in time (0 = live, positive = seconds 
 let historicalData = null; // Cache for historical data
 let isLoadingHistorical = false;
 
+// Heartbeat for fan safety monitoring
+let heartbeatInterval = null;
+const HEARTBEAT_INTERVAL_MS = 3000; // Send heartbeat every 3 seconds
+
 // Load settings and sensors from server
 async function loadConfiguration() {
     try {
@@ -269,12 +273,19 @@ socket.on('connect', () => {
     if (statusDot) statusDot.classList.add('connected');
     if (statusText) statusText.textContent = 'Connected';
     
+    // Start heartbeat for fan safety monitoring
+    startHeartbeat();
+    
     // Request initial data
     socket.emit('request_data');
 });
 
 socket.on('disconnect', () => {
     console.log('Disconnected from server');
+    
+    // Stop heartbeat
+    stopHeartbeat();
+    
     const statusDot = document.getElementById('statusDot');
     const statusText = document.getElementById('statusText');
     if (statusDot) statusDot.classList.remove('connected');
@@ -286,6 +297,32 @@ socket.on('connect_error', (error) => {
     const statusText = document.getElementById('statusText');
     if (statusText) statusText.textContent = 'Connection Error';
 });
+
+// Fan safety: emergency stop notification from server
+socket.on('fan_emergency_stop', (data) => {
+    console.warn('⚠️ Fan emergency stop:', data);
+    alert(`⚠️ Fan Emergency Stop\n\nReason: ${data.reason}\nThe fan was automatically stopped after ${data.timeout} seconds without client connection.`);
+    loadFanStatus(); // Update UI
+});
+
+// Heartbeat functions for fan safety monitoring
+function startHeartbeat() {
+    if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+    }
+    heartbeatInterval = setInterval(() => {
+        socket.emit('heartbeat');
+    }, HEARTBEAT_INTERVAL_MS);
+    console.log('Heartbeat started (every 3s for fan safety)');
+}
+
+function stopHeartbeat() {
+    if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+        heartbeatInterval = null;
+        console.log('Heartbeat stopped');
+    }
+}
 
 // Data update handler
 socket.on('data_update', (data) => {
