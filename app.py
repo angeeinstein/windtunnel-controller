@@ -2081,6 +2081,38 @@ def test_sensor():
             'message': f'Test failed: {str(e)}'
         }), 500
 
+@app.route('/api/sensor-status/<sensor_id>', methods=['GET'])
+def get_sensor_status(sensor_id):
+    """Get current status of a sensor (connected/disconnected based on whether it's running and has data)."""
+    try:
+        # Check if sensor is initialized and running
+        if sensor_id in sensor_instances:
+            # Check if it has recent data
+            last_value = sensor_last_values.get(sensor_id, None)
+            
+            if last_value is not None:
+                return jsonify({
+                    'status': 'connected',
+                    'message': 'Sensor is running and providing data',
+                    'last_value': last_value
+                })
+            else:
+                return jsonify({
+                    'status': 'connected',
+                    'message': 'Sensor is initialized',
+                    'last_value': None
+                })
+        else:
+            return jsonify({
+                'status': 'disconnected',
+                'message': 'Sensor not initialized'
+            })
+    except Exception as e:
+        return jsonify({
+            'status': 'unknown',
+            'message': f'Error checking status: {str(e)}'
+        }), 500
+
 @app.route('/api/refresh-sensor-libraries', methods=['POST'])
 def refresh_sensor_libraries():
     """Recheck which sensor libraries are available (call after installation)."""
