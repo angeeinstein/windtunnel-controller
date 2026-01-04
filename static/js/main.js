@@ -12,6 +12,15 @@ let currentSettings = {
 let sensors = [];
 let elements = {};
 
+// Local sparkline buffer - keeps last 50 points for each sensor for dashboard sparklines
+const sparklineData = {}; // {sensorId: [value1, value2, ...]}
+const MAX_SPARKLINE_POINTS = 50;
+
+// Graph data cache - stores fetched data from server API
+// Data is lazy-loaded and cached when viewing graphs
+const graphDataCache = {}; // {sensorId: [{timestamp, value}, ...]}
+const UPDATE_INTERVAL_MS = 200; // Fixed at 200ms (5Hz)
+
 // Load settings and sensors from server
 async function loadConfiguration() {
     try {
@@ -299,15 +308,6 @@ document.getElementById('resetBtn').addEventListener('click', () => {
 
 // Initial connection message
 console.log('Wind Tunnel Control System initialized');
-
-// Local sparkline buffer - keeps last 50 points for each sensor for dashboard sparklines
-const sparklineData = {}; // {sensorId: [value1, value2, ...]}
-const MAX_SPARKLINE_POINTS = 50;
-
-// Graph data cache - stores fetched data from server API
-// Data is lazy-loaded and cached when viewing graphs
-const graphDataCache = {}; // {sensorId: [{timestamp, value}, ...]}
-const UPDATE_INTERVAL_MS = 200; // Fixed at 200ms (5Hz)
 
 // Draw sparkline
 function drawSparkline(canvasId, data, color = '#3498db') {
