@@ -151,16 +151,7 @@ DEFAULT_SETTINGS = {
     'temperatureUnit': 'c',
     'systemName': 'Wind Tunnel Alpha',
     'dataRetentionHours': 24,  # How long to keep sensor data in database
-    'sensors': [],
-    'fan': {
-        'enabled': True,
-        'pwm_pin': 18,  # GPIO18 (Pin 12) - Hardware PWM0
-        'pwm_frequency': 1000,  # 1kHz PWM frequency
-        'min_duty_cycle': 0,  # 0% for 0V
-        'max_duty_cycle': 100,  # 100% for 10V (assuming proper voltage divider)
-        'running': False,
-        'target_speed': 0
-    }
+    'sensors': []
 }
 
 # Default sensor configurations (when no sensors are configured)
@@ -1081,133 +1072,6 @@ SENSOR_HANDLERS = {
 }
 
 
-# Fan PWM Control
-pwm_instance = None
-
-def init_fan_pwm():
-    """Initialize PWM output for fan control."""
-    global pwm_instance
-    
-    try:
-        fan_config = current_settings.get('fan', {})
-        if not fan_config.get('enabled', True):
-            print("Fan control is disabled")
-            return False
-        
-        pwm_pin = fan_config.get('pwm_pin', 18)
-        pwm_freq = fan_config.get('pwm_frequency', 1000)
-        
-        # Check if lgpio is available (for Pi 5)
-        try:
-            import lgpio
-            
-            # Open gpiochip
-            h = lgpio.gpiochip_open(0)
-            
-            # Set PWM on the pin
-            # lgpio uses hardware PWM which is perfect for this
-            pwm_instance = {'handle': h, 'pin': pwm_pin, 'backend': 'lgpio'}
-            
-            print(f"✓ Fan PWM initialized on GPIO{pwm_pin} using lgpio (Pi 5)")
-            
-            # Set initial state to off
-            lgpio.tx_pwm(h, pwm_pin, pwm_freq, 0)
-            
-            return True
-            
-        except ImportError:
-            # Fall back to RPi.GPIO for older Pi models
-            try:
-                import RPi.GPIO as GPIO
-                
-                GPIO.setmode(GPIO.BCM)
-                GPIO.setup(pwm_pin, GPIO.OUT)
-                pwm = GPIO.PWM(pwm_pin, pwm_freq)
-                pwm.start(0)
-                
-                pwm_instance = {'pwm': pwm, 'pin': pwm_pin, 'backend': 'RPi.GPIO'}
-                
-                print(f"✓ Fan PWM initialized on GPIO{pwm_pin} using RPi.GPIO")
-                return True
-                
-            except Exception as e:
-                print(f"Error initializing PWM with RPi.GPIO: {e}")
-                return False
-                
-    except Exception as e:
-        print(f"Error initializing fan PWM: {e}")
-        return False
-
-def set_fan_pwm(speed_percent):
-    """Set fan PWM duty cycle (0-100%)."""
-    global pwm_instance
-    
-    try:
-        # Initialize PWM if not already done
-        if pwm_instance is None:
-            if not init_fan_pwm():
-                return False
-        
-        # Clamp speed to 0-100%
-        speed_percent = max(0, min(100, speed_percent))
-        
-        fan_config = current_settings.get('fan', {})
-        min_duty = fan_config.get('min_duty_cycle', 0)
-        max_duty = fan_config.get('max_duty_cycle', 100)
-        
-        # Map speed percentage to duty cycle range
-        duty_cycle = min_duty + (speed_percent / 100.0) * (max_duty - min_duty)
-        
-        backend = pwm_instance.get('backend')
-        
-        if backend == 'lgpio':
-            # lgpio: duty cycle is 0-100
-            import lgpio
-            h = pwm_instance['handle']
-            pin = pwm_instance['pin']
-            freq = fan_config.get('pwm_frequency', 1000)
-            lgpio.tx_pwm(h, pin, freq, duty_cycle)
-            
-        elif backend == 'RPi.GPIO':
-            # RPi.GPIO: duty cycle is 0-100
-            pwm = pwm_instance['pwm']
-            pwm.ChangeDutyCycle(duty_cycle)
-        
-        print(f"Fan PWM set to {duty_cycle:.1f}% (speed: {speed_percent}%)")
-        return True
-        
-    except Exception as e:
-        print(f"Error setting fan PWM: {e}")
-        return False
-
-def cleanup_fan_pwm():
-    """Cleanup PWM resources."""
-    global pwm_instance
-    
-    try:
-        if pwm_instance:
-            backend = pwm_instance.get('backend')
-            
-            if backend == 'lgpio':
-                import lgpio
-                h = pwm_instance['handle']
-                pin = pwm_instance['pin']
-                lgpio.tx_pwm(h, pin, 0, 0)  # Stop PWM
-                lgpio.gpiochip_close(h)
-                
-            elif backend == 'RPi.GPIO':
-                import RPi.GPIO as GPIO
-                pwm = pwm_instance['pwm']
-                pwm.stop()
-                GPIO.cleanup(pwm_instance['pin'])
-            
-            pwm_instance = None
-            print("Fan PWM cleaned up")
-            
-    except Exception as e:
-        print(f"Error cleaning up fan PWM: {e}")
-
-
 # Load settings from file
 def load_settings():
     try:
@@ -1731,17 +1595,6 @@ def get_available_pins():
     sensors = current_settings.get('sensors', [])
     occupied_pins = {}  # {gpio_num: {'sensor_id', 'sensor_name', 'pin_field', 'shareable'}}
     
-    # Check if fan PWM is enabled and mark that pin as occupied
-    fan_config = current_settings.get('fan', {})
-    if fan_config.get('enabled', True):
-        pwm_pin = fan_config.get('pwm_pin', 18)
-        occupied_pins[pwm_pin] = {
-            'sensor_id': 'fan_pwm', 
-            'sensor_name': 'Fan Control', 
-            'pin_field': 'PWM Output', 
-            'shareable': False
-        }
-    
     for sensor in sensors:
         if sensor.get('id') == current_sensor_id:
             continue  # Skip current sensor being edited
@@ -1915,92 +1768,6 @@ def get_historical_data():
             'returned_points': len(data)
         })
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
-
-@app.route('/api/fan/status', methods=['GET'])
-def fan_status():
-    """Get fan status."""
-    fan_config = current_settings.get('fan', {})
-    return jsonify({
-        'running': fan_config.get('running', False),
-        'speed': fan_config.get('target_speed', 0),
-        'enabled': fan_config.get('enabled', True)
-    })
-
-@app.route('/api/fan/start', methods=['POST'])
-def fan_start():
-    """Start fan at specified speed."""
-    from flask import request
-    try:
-        data = request.get_json()
-        speed = int(data.get('speed', 0))
-        speed = max(0, min(100, speed))  # Clamp to 0-100%
-        
-        fan_config = current_settings.get('fan', {})
-        if not fan_config.get('enabled', True):
-            return jsonify({'status': 'error', 'message': 'Fan control is disabled'}), 400
-        
-        # Set PWM
-        success = set_fan_pwm(speed)
-        if success:
-            fan_config['running'] = True
-            fan_config['target_speed'] = speed
-            save_settings_to_file(current_settings)
-            
-            print(f"Fan started at {speed}%")
-            return jsonify({'status': 'success', 'message': f'Fan started at {speed}%', 'speed': speed})
-        else:
-            return jsonify({'status': 'error', 'message': 'Failed to control PWM output'}), 500
-    except Exception as e:
-        print(f"Error starting fan: {e}")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
-
-@app.route('/api/fan/stop', methods=['POST'])
-def fan_stop():
-    """Stop fan."""
-    try:
-        fan_config = current_settings.get('fan', {})
-        
-        # Set PWM to 0
-        success = set_fan_pwm(0)
-        if success:
-            fan_config['running'] = False
-            fan_config['target_speed'] = 0
-            save_settings_to_file(current_settings)
-            
-            print("Fan stopped")
-            return jsonify({'status': 'success', 'message': 'Fan stopped'})
-        else:
-            return jsonify({'status': 'error', 'message': 'Failed to control PWM output'}), 500
-    except Exception as e:
-        print(f"Error stopping fan: {e}")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
-
-@app.route('/api/fan/speed', methods=['POST'])
-def fan_set_speed():
-    """Set fan speed (when already running)."""
-    from flask import request
-    try:
-        data = request.get_json()
-        speed = int(data.get('speed', 0))
-        speed = max(0, min(100, speed))  # Clamp to 0-100%
-        
-        fan_config = current_settings.get('fan', {})
-        if not fan_config.get('running', False):
-            return jsonify({'status': 'error', 'message': 'Fan is not running'}), 400
-        
-        # Set PWM
-        success = set_fan_pwm(speed)
-        if success:
-            fan_config['target_speed'] = speed
-            save_settings_to_file(current_settings)
-            
-            print(f"Fan speed set to {speed}%")
-            return jsonify({'status': 'success', 'message': f'Speed set to {speed}%', 'speed': speed})
-        else:
-            return jsonify({'status': 'error', 'message': 'Failed to control PWM output'}), 500
-    except Exception as e:
-        print(f"Error setting fan speed: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/api/settings', methods=['GET'])
@@ -2995,22 +2762,6 @@ def handle_data_request():
 if __name__ == '__main__':
     # Initialize database on startup
     init_database()
-    
-    # Initialize fan PWM and restore state
-    print("\n" + "="*60)
-    print("Initializing Fan Control...")
-    print("="*60)
-    if init_fan_pwm():
-        fan_config = current_settings.get('fan', {})
-        if fan_config.get('running', False):
-            speed = fan_config.get('target_speed', 0)
-            print(f"Restoring fan state: Running at {speed}%")
-            set_fan_pwm(speed)
-        else:
-            print("Fan state: Off")
-    else:
-        print("⚠ Fan PWM initialization failed - control disabled")
-    print("="*60 + "\n")
     
     # Run on all interfaces for Raspberry Pi access
     # Use port 80 (standard HTTP port), disable debug in production
