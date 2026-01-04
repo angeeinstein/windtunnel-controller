@@ -326,6 +326,7 @@ SENSOR_TYPES = {
 
 # Sensor initialization cache and handlers
 sensor_instances = {}  # Cache initialized sensors {sensor_id: instance}
+sensor_last_values = {}  # Cache last reading from each sensor {sensor_id: value}
 available_sensor_libraries = {}  # Track which libraries are installed
 import importlib
 import math
@@ -1186,6 +1187,7 @@ def generate_mock_data():
                 handler = SENSOR_HANDLERS[sensor_type]
                 value = handler['read'](sensor_instances[sensor_id], sensor.get('config', {}))
                 sensor_values[sensor_id] = value
+                sensor_last_values[sensor_id] = value  # Cache for status checks
                 data[sensor_id] = value
             else:
                 # Failed to initialize
@@ -1976,6 +1978,7 @@ def test_sensor():
     try:
         data = request.get_json()
         sensor_type = data.get('sensor_type')
+        sensor_id = data.get('sensor_id')  # Optional: ID of sensor being tested
         config = data.get('config', {})
         
         print(f"[TEST-SENSOR] Testing sensor type: {sensor_type}")
@@ -1983,6 +1986,29 @@ def test_sensor():
         
         if not sensor_type:
             return jsonify({'status': 'error', 'message': 'sensor_type is required'}), 400
+        
+        # Check if this sensor is already running (for GPIO-based sensors)
+        if sensor_id and sensor_id in sensor_instances:
+            # Sensor already initialized and running - check if it's providing data
+            last_value = sensor_last_values.get(sensor_id, None)
+            
+            if last_value is not None:
+                # Sensor is providing data
+                return jsonify({
+                    'status': 'success',
+                    'message': f'✓ Sensor is already running! Last reading: {last_value:.2f}. Check the dashboard for live data.',
+                    'value': last_value,
+                    'hardware_detected': True,
+                    'already_running': True
+                })
+            else:
+                # Sensor initialized but no data yet (might be starting up)
+                return jsonify({
+                    'status': 'success',
+                    'message': '✓ Sensor is initialized and starting up. Check the dashboard in a moment for live readings.',
+                    'hardware_detected': True,
+                    'already_running': True
+                })
         
         # Check if library is available
         if sensor_type in available_sensor_libraries and not available_sensor_libraries[sensor_type]:
