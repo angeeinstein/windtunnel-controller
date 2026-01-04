@@ -1709,20 +1709,34 @@ def wifi_status():
         if not wifi_interface:
             return jsonify({'connected': False, 'no_adapter': True, 'message': 'No WiFi adapter found'})
         
-        # Use iwconfig to get WiFi info (Linux)
-        result = subprocess.run(['iwconfig', wifi_interface], capture_output=True, text=True, timeout=5)
+        print(f"Checking WiFi status for interface: {wifi_interface}")
+        
+        # Use iw to get WiFi connection info (more reliable than iwconfig on modern systems)
+        result = subprocess.run(['iw', 'dev', wifi_interface, 'info'], 
+                              capture_output=True, text=True, timeout=5)
         output = result.stdout
         
-        # Parse WiFi info
-        ssid_match = re.search(r'ESSID:"([^"]*)"', output)
-        signal_match = re.search(r'Signal level=(-?\d+)', output)
+        print(f"iw output: {output}")
         
-        if ssid_match and ssid_match.group(1):
-            ssid = ssid_match.group(1)
+        # Parse WiFi info from iw output
+        ssid_match = re.search(r'ssid (.+)', output)
+        
+        if ssid_match and ssid_match.group(1).strip():
+            ssid = ssid_match.group(1).strip()
+            
+            # Get signal strength from iw station dump
+            signal_result = subprocess.run(['iw', 'dev', wifi_interface, 'station', 'dump'], 
+                                          capture_output=True, text=True, timeout=5)
+            signal_output = signal_result.stdout
+            
+            # Parse signal level (e.g., "signal: -45 dBm")
+            signal_match = re.search(r'signal:\s+(-?\d+)', signal_output)
             signal_level = int(signal_match.group(1)) if signal_match else -100
             
             # Convert signal level to percentage (typical range: -90 to -30 dBm)
             signal_percent = max(0, min(100, (signal_level + 90) * 100 // 60))
+            
+            print(f"Connected to {ssid}, signal: {signal_level} dBm ({signal_percent}%)")
             
             return jsonify({
                 'connected': True,
