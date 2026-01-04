@@ -1353,7 +1353,7 @@
         // Hardware Configuration Functions
         let currentHardwareConfigIndex = null;
 
-        function openHardwareConfig(sensorIndex) {
+        async function openHardwareConfig(sensorIndex) {
             currentHardwareConfigIndex = sensorIndex;
             const sensor = sensors[sensorIndex];
             const sensorType = sensorTypes[sensor.type];
@@ -1369,9 +1369,9 @@
             html += `<p style="color: var(--text-secondary); margin-bottom: 20px;">${sensorType.description}</p>`;
             
             // Generate fields based on sensor type
-            sensorType.fields.forEach(field => {
-                html += generateHardwareField(field, sensor.config || {});
-            });
+            for (const field of sensorType.fields) {
+                html += await generateHardwareField(field, sensor.config || {}, sensor.type, sensor.id);
+            }
             
             body.innerHTML = html;
             document.getElementById('hardwareModal').style.display = 'flex';
@@ -1382,7 +1382,7 @@
             currentHardwareConfigIndex = null;
         }
 
-        function generateHardwareField(field, config) {
+        async function generateHardwareField(field, config, sensorType, sensorId) {
             const value = config[field.name] || field.default || '';
             let html = `<div class="hardware-field-group">`;
             html += `<label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--text-primary);">${field.label}</label>`;
@@ -1391,7 +1391,42 @@
                 html += `<p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 10px;">${field.description}</p>`;
             }
             
-            if (field.type === 'select') {
+            if (field.type === 'gpio_select') {
+                // Fetch available pins from backend
+                try {
+                    const response = await fetch(`/api/gpio/available-pins?sensor_type=${sensorType}&current_sensor_id=${sensorId}&pin_field=${field.name}`);
+                    const data = await response.json();
+                    
+                    html += `<select id="hw_${field.name}" style="width: 100%; padding: 10px; border: 2px solid var(--border-color); border-radius: 6px; font-size: 1rem; background: var(--bg-secondary);">`;
+                    
+                    data.pins.forEach(pin => {
+                        const isSelected = value == pin.gpio;
+                        const disabled = !pin.available ? 'disabled' : '';
+                        let displayText = pin.label;
+                        
+                        if (pin.occupied && !pin.shareable) {
+                            displayText += ` (Used by ${pin.occupied_by})`;
+                        } else if (pin.occupied && pin.shareable) {
+                            displayText += ` (Shared with ${pin.occupied_by})`;
+                        }
+                        
+                        if (!pin.available && !pin.occupied) {
+                            displayText += ' (Not compatible)';
+                        }
+                        
+                        html += `<option value="${pin.gpio}" ${isSelected ? 'selected' : ''} ${disabled}>${displayText}</option>`;
+                    });
+                    
+                    html += `</select>`;
+                    if (data.note) {
+                        html += `<p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 6px; font-style: italic;">${data.note}</p>`;
+                    }
+                } catch (error) {
+                    console.error('Error loading GPIO pins:', error);
+                    // Fallback to simple number input
+                    html += `<input type="number" id="hw_${field.name}" value="${value}" min="2" max="27" style="width: 100%; padding: 10px; border: 2px solid var(--border-color); border-radius: 6px; font-size: 1rem;">`;
+                }
+            } else if (field.type === 'select') {
                 html += `<select id="hw_${field.name}" style="width: 100%; padding: 10px; border: 2px solid var(--border-color); border-radius: 6px; font-size: 1rem;">`;
                 field.options.forEach(option => {
                     const optValue = typeof option === 'object' ? option.value : option;

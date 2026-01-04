@@ -183,8 +183,8 @@ SENSOR_TYPES = {
         'category': 'hardware',
         'description': 'For measuring force/weight with load cells',
         'fields': [
-            {'name': 'dout_pin', 'label': 'DOUT Pin (BCM)', 'type': 'number', 'default': 5, 'min': 2, 'max': 27},
-            {'name': 'pd_sck_pin', 'label': 'PD_SCK Pin (BCM)', 'type': 'number', 'default': 6, 'min': 2, 'max': 27},
+            {'name': 'dout_pin', 'label': 'DOUT Pin (GPIO #)', 'type': 'gpio_select', 'default': 5, 'pin_type': 'gpio'},
+            {'name': 'pd_sck_pin', 'label': 'PD_SCK Pin (GPIO #)', 'type': 'gpio_select', 'default': 6, 'pin_type': 'gpio'},
             {'name': 'channel', 'label': 'Channel & Gain', 'type': 'select', 'options': ['A-128', 'A-64', 'B-32'], 'default': 'A-128'},
             {'name': 'reference_unit', 'label': 'Calibration Factor', 'type': 'number', 'default': 1, 'step': 0.1},
             {'name': 'offset', 'label': 'Zero Offset', 'type': 'number', 'default': 0}
@@ -229,7 +229,7 @@ SENSOR_TYPES = {
         'category': 'hardware',
         'description': 'Digital temperature and humidity sensor',
         'fields': [
-            {'name': 'pin', 'label': 'Data Pin (BCM)', 'type': 'number', 'default': 4, 'min': 2, 'max': 27}
+            {'name': 'pin', 'label': 'Data Pin (GPIO #)', 'type': 'gpio_select', 'default': 4, 'pin_type': 'gpio'}
         ]
     },
     'DS18B20': {
@@ -246,6 +246,7 @@ SENSOR_TYPES = {
         'category': 'hardware',
         'description': '10-bit analog-to-digital converter',
         'fields': [
+            {'name': 'cs_pin', 'label': 'CS (Chip Select) Pin (GPIO #)', 'type': 'gpio_select', 'default': 8, 'pin_type': 'gpio'},
             {'name': 'channel', 'label': 'Channel', 'type': 'select', 'options': ['0', '1', '2', '3', '4', '5', '6', '7'], 'default': '0'},
             {'name': 'vref', 'label': 'Reference Voltage', 'type': 'number', 'default': 3.3, 'step': 0.1}
         ]
@@ -1529,6 +1530,173 @@ def get_sensors():
         current_settings['sensors'] = DEFAULT_SENSORS
         save_settings_to_file(current_settings)
     return jsonify(sensors)
+
+@app.route('/api/gpio/available-pins', methods=['GET'])
+def get_available_pins():
+    """
+    Get available GPIO pins for a sensor, considering:
+    - Pin capabilities (GPIO, I2C, SPI, etc.)
+    - Currently occupied pins by other sensors
+    - Sensor type requirements
+    
+    Query params:
+    - sensor_type: Type of sensor (e.g., 'HX711', 'DHT22')
+    - current_sensor_id: ID of sensor being edited (to exclude its own pins)
+    - pin_field: Specific field being selected (e.g., 'dout_pin', 'pd_sck_pin')
+    """
+    from flask import request
+    
+    sensor_type = request.args.get('sensor_type')
+    current_sensor_id = request.args.get('current_sensor_id')
+    pin_field = request.args.get('pin_field', '')
+    
+    # Raspberry Pi GPIO pin mappings (BCM GPIO numbers)
+    # Define all pins with their capabilities
+    gpio_pins = {
+        # GPIO number: {physical_pin, capabilities, description}
+        2: {'physical': 3, 'caps': ['I2C'], 'desc': 'I2C1 SDA'},
+        3: {'physical': 5, 'caps': ['I2C'], 'desc': 'I2C1 SCL'},
+        4: {'physical': 7, 'caps': ['GPIO', 'GPCLK0'], 'desc': 'GPIO'},
+        5: {'physical': 29, 'caps': ['GPIO'], 'desc': 'GPIO'},
+        6: {'physical': 31, 'caps': ['GPIO'], 'desc': 'GPIO'},
+        7: {'physical': 26, 'caps': ['GPIO', 'SPI'], 'desc': 'SPI0 CE1'},
+        8: {'physical': 24, 'caps': ['GPIO', 'SPI'], 'desc': 'SPI0 CE0'},
+        9: {'physical': 21, 'caps': ['GPIO', 'SPI'], 'desc': 'SPI0 MISO'},
+        10: {'physical': 19, 'caps': ['GPIO', 'SPI'], 'desc': 'SPI0 MOSI'},
+        11: {'physical': 23, 'caps': ['GPIO', 'SPI'], 'desc': 'SPI0 SCLK'},
+        12: {'physical': 32, 'caps': ['GPIO', 'PWM'], 'desc': 'PWM0'},
+        13: {'physical': 33, 'caps': ['GPIO', 'PWM'], 'desc': 'PWM1'},
+        14: {'physical': 8, 'caps': ['GPIO', 'UART'], 'desc': 'UART TXD'},
+        15: {'physical': 10, 'caps': ['GPIO', 'UART'], 'desc': 'UART RXD'},
+        16: {'physical': 36, 'caps': ['GPIO'], 'desc': 'GPIO'},
+        17: {'physical': 11, 'caps': ['GPIO'], 'desc': 'GPIO'},
+        18: {'physical': 12, 'caps': ['GPIO', 'PWM'], 'desc': 'PWM0'},
+        19: {'physical': 35, 'caps': ['GPIO', 'PWM', 'SPI'], 'desc': 'SPI1 MISO'},
+        20: {'physical': 38, 'caps': ['GPIO', 'SPI'], 'desc': 'SPI1 MOSI'},
+        21: {'physical': 40, 'caps': ['GPIO', 'SPI'], 'desc': 'SPI1 SCLK'},
+        22: {'physical': 15, 'caps': ['GPIO'], 'desc': 'GPIO'},
+        23: {'physical': 16, 'caps': ['GPIO'], 'desc': 'GPIO'},
+        24: {'physical': 18, 'caps': ['GPIO'], 'desc': 'GPIO'},
+        25: {'physical': 22, 'caps': ['GPIO'], 'desc': 'GPIO'},
+        26: {'physical': 37, 'caps': ['GPIO'], 'desc': 'GPIO'},
+        27: {'physical': 13, 'caps': ['GPIO'], 'desc': 'GPIO'}
+    }
+    
+    # Get all configured sensors except the current one being edited
+    sensors = current_settings.get('sensors', [])
+    occupied_pins = {}  # {gpio_num: {'sensor_id', 'sensor_name', 'pin_field', 'shareable'}}
+    
+    for sensor in sensors:
+        if sensor.get('id') == current_sensor_id:
+            continue  # Skip current sensor being edited
+            
+        sensor_config = sensor.get('config', {})
+        s_type = sensor.get('type')
+        s_id = sensor.get('id')
+        s_name = sensor.get('name')
+        
+        # Check which pins this sensor uses
+        if s_type == 'HX711':
+            dout = sensor_config.get('dout_pin')
+            sck = sensor_config.get('pd_sck_pin')
+            if dout: occupied_pins[int(dout)] = {'sensor_id': s_id, 'sensor_name': s_name, 'pin_field': 'dout_pin', 'shareable': False}
+            if sck: occupied_pins[int(sck)] = {'sensor_id': s_id, 'sensor_name': s_name, 'pin_field': 'pd_sck_pin', 'shareable': False}
+        
+        elif s_type == 'DHT22':
+            pin = sensor_config.get('pin')
+            if pin: occupied_pins[int(pin)] = {'sensor_id': s_id, 'sensor_name': s_name, 'pin_field': 'pin', 'shareable': False}
+        
+        elif s_type in ['ADS1115', 'BMP280', 'SDP811', 'MPU6050', 'XGZP6847A', 'BME280', 'INA219', 'VL53L0X']:
+            # I2C sensors - pins 2 and 3 are shareable
+            if 2 not in occupied_pins:
+                occupied_pins[2] = {'sensor_id': s_id, 'sensor_name': s_name, 'pin_field': 'I2C SDA', 'shareable': True}
+            if 3 not in occupied_pins:
+                occupied_pins[3] = {'sensor_id': s_id, 'sensor_name': s_name, 'pin_field': 'I2C SCL', 'shareable': True}
+        
+        elif s_type == 'MCP3008':
+            # SPI sensor - shared SPI bus pins (MOSI, MISO, SCLK) + individual CS pin
+            # Mark shared SPI pins as occupied but shareable
+            for spi_pin in [9, 10, 11]:  # MISO, MOSI, SCLK
+                if spi_pin not in occupied_pins:
+                    occupied_pins[spi_pin] = {'sensor_id': s_id, 'sensor_name': s_name, 'pin_field': 'SPI Bus', 'shareable': True}
+            
+            # CS pin is exclusive to this sensor
+            cs_pin = sensor_config.get('cs_pin')
+            if cs_pin: 
+                occupied_pins[int(cs_pin)] = {'sensor_id': s_id, 'sensor_name': s_name, 'pin_field': 'SPI CS', 'shareable': False}
+    
+    # Determine which pins are available for this sensor type
+    available_pins = []
+    
+    for gpio_num, pin_info in sorted(gpio_pins.items()):
+        is_occupied = gpio_num in occupied_pins
+        occupation_info = occupied_pins.get(gpio_num, {})
+        is_shareable = occupation_info.get('shareable', False)
+        
+        # Determine if this pin can be used based on sensor type
+        can_use = False
+        pin_type_label = ''
+        
+        if sensor_type in ['ADS1115', 'BMP280', 'SDP811', 'MPU6050', 'XGZP6847A', 'BME280', 'INA219', 'VL53L0X']:
+            # I2C sensors - only need pins 2 and 3, always shareable
+            if gpio_num in [2, 3]:
+                can_use = True
+                pin_type_label = 'I2C (shared)'
+        
+        elif sensor_type == 'MCP3008':
+            # SPI sensor - different rules for CS pin vs bus pins
+            if pin_field == 'cs_pin':
+                # CS pin needs exclusive GPIO access (not shared SPI bus pins)
+                if 'GPIO' in pin_info['caps']:
+                    # Prefer SPI-capable pins for CS, but any GPIO works
+                    can_use = True
+                    if 'SPI' in pin_info['caps'] and gpio_num in [7, 8]:
+                        pin_type_label = 'SPI CS'
+                    else:
+                        pin_type_label = 'GPIO (for CS)'
+            else:
+                # For other fields (shouldn't happen, but handle gracefully)
+                if 'SPI' in pin_info['caps']:
+                    can_use = True
+                    pin_type_label = 'SPI'
+        
+        elif sensor_type in ['HX711', 'DHT22']:
+            # GPIO sensors - need exclusive access
+            if 'GPIO' in pin_info['caps']:
+                if not is_occupied or is_shareable:
+                    can_use = True
+                pin_type_label = 'GPIO'
+        
+        else:
+            # Default: any GPIO-capable pin
+            if 'GPIO' in pin_info['caps']:
+                can_use = True
+                pin_type_label = 'GPIO'
+        
+        # Build pin entry
+        pin_entry = {
+            'gpio': gpio_num,
+            'physical': pin_info['physical'],
+            'description': pin_info['desc'],
+            'capabilities': pin_info['caps'],
+            'available': can_use and (not is_occupied or is_shareable),
+            'occupied': is_occupied,
+            'pin_type': pin_type_label,
+            'label': f'GPIO{gpio_num} (Pin {pin_info["physical"]}) - {pin_info["desc"]}'
+        }
+        
+        if is_occupied:
+            pin_entry['occupied_by'] = occupation_info.get('sensor_name', 'Unknown')
+            pin_entry['occupied_field'] = occupation_info.get('pin_field', '')
+            pin_entry['shareable'] = is_shareable
+        
+        available_pins.append(pin_entry)
+    
+    return jsonify({
+        'pins': available_pins,
+        'sensor_type': sensor_type,
+        'note': 'I2C and SPI pins can be shared between multiple sensors. GPIO pins require exclusive access.'
+    })
 
 @app.route('/api/historical-data', methods=['GET'])
 def get_historical_data():
