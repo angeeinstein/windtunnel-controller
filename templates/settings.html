@@ -747,6 +747,50 @@
             </div>
         </div>
 
+        <!-- Fan Control Settings -->
+        <div class="settings-section">
+            <h2>Fan Control</h2>
+            
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">Fan Control Enabled</div>
+                    <div class="setting-description">Enable PWM control for fan speed</div>
+                </div>
+                <div class="setting-control">
+                    <label class="switch">
+                        <input type="checkbox" id="fanEnabled" checked>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">PWM Output Pin</div>
+                    <div class="setting-description">GPIO pin for fan PWM control (GPIO18/Pin 12 recommended for hardware PWM)</div>
+                </div>
+                <div class="setting-control">
+                    <select id="fanPwmPin" class="setting-select" style="min-width: 300px;">
+                        <option value="12">GPIO12 (Pin 32) - PWM0</option>
+                        <option value="13">GPIO13 (Pin 33) - PWM1</option>
+                        <option value="18" selected>GPIO18 (Pin 12) - PWM0 (Recommended)</option>
+                        <option value="19">GPIO19 (Pin 35) - PWM1</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="setting-row">
+                <div>
+                    <div class="setting-label">PWM Frequency</div>
+                    <div class="setting-description">PWM frequency in Hz (1000Hz recommended for 0-10V modules)</div>
+                </div>
+                <div class="setting-control">
+                    <input type="number" inputmode="decimal" class="setting-input" value="1000" id="fanPwmFrequency" min="100" max="10000" step="100" style="min-width: 150px;">
+                    <span style="margin-left: 8px; color: var(--text-secondary);">Hz</span>
+                </div>
+            </div>
+        </div>
+
         <!-- Network Settings -->
         <div class="settings-section">
             <h2>Network Settings</h2>
@@ -908,7 +952,12 @@
                 dataRetentionHours: parseInt(document.getElementById('dataRetentionHours').value),
                 velocityUnit: document.getElementById('velocityUnit').value,
                 temperatureUnit: document.getElementById('temperatureUnit').value,
-                systemName: document.getElementById('systemName').value
+                systemName: document.getElementById('systemName').value,
+                fan: {
+                    enabled: document.getElementById('fanEnabled').checked,
+                    pwm_pin: parseInt(document.getElementById('fanPwmPin').value),
+                    pwm_frequency: parseInt(document.getElementById('fanPwmFrequency').value)
+                }
             };
 
             // Send to server
@@ -956,6 +1005,13 @@
                         document.getElementById('velocityUnit').value = settings.velocityUnit;
                         document.getElementById('temperatureUnit').value = settings.temperatureUnit;
                         document.getElementById('systemName').value = settings.systemName;
+                        
+                        // Update fan settings
+                        if (settings.fan) {
+                            document.getElementById('fanEnabled').checked = settings.fan.enabled !== false;
+                            document.getElementById('fanPwmPin').value = settings.fan.pwm_pin || 18;
+                            document.getElementById('fanPwmFrequency').value = settings.fan.pwm_frequency || 1000;
+                        }
                         
                         // Set toggles based on reset settings
                         if (settings.darkMode) document.getElementById('darkMode').classList.add('active');
@@ -1852,6 +1908,13 @@
                     document.getElementById('velocityUnit').value = settings.velocityUnit || 'ms';
                     document.getElementById('temperatureUnit').value = settings.temperatureUnit || 'c';
                     document.getElementById('systemName').value = settings.systemName || 'Wind Tunnel Alpha';
+                    
+                    // Load fan settings
+                    if (settings.fan) {
+                        document.getElementById('fanEnabled').checked = settings.fan.enabled !== false;
+                        document.getElementById('fanPwmPin').value = settings.fan.pwm_pin || 18;
+                        document.getElementById('fanPwmFrequency').value = settings.fan.pwm_frequency || 1000;
+                    }
                     
                     if (settings.darkMode) document.getElementById('darkMode').classList.add('active');
                     if (settings.developerMode) document.getElementById('developerMode').classList.add('active');

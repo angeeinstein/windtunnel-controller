@@ -48,13 +48,30 @@
                 <!-- Sensor cards will be dynamically generated here -->
             </div>
 
-            <!-- Control Panel (for future expansion) -->
+            <!-- Control Panel -->
             <div class="control-panel">
-                <h2>Controls</h2>
+                <h2>Turbine Control</h2>
+                <div id="turbineStatus" style="padding: 16px; margin-bottom: 20px; background: var(--card-bg); border-radius: 12px; border: 2px solid var(--border-color);">
+                    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                        <div id="statusIndicator" style="width: 16px; height: 16px; border-radius: 50%; background: var(--danger-color);"></div>
+                        <span id="statusText" style="font-size: 1.1rem; font-weight: 600; color: var(--text-primary);">Turbine Off</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 16px;">
+                        <label style="font-weight: 600; min-width: 120px; color: var(--text-secondary);">Target Speed:</label>
+                        <input type="range" id="speedSlider" min="0" max="100" value="0" disabled
+                               style="flex: 1; height: 8px; border-radius: 4px; outline: none; background: var(--border-color);">
+                        <input type="number" id="speedInput" min="0" max="100" value="0" disabled
+                               style="width: 80px; padding: 8px; border: 2px solid var(--border-color); border-radius: 6px; font-size: 1rem; text-align: center;">
+                        <span style="color: var(--text-secondary); font-size: 1rem;">%</span>
+                    </div>
+                </div>
                 <div class="controls-grid">
-                    <button class="control-btn" id="startBtn" disabled>Start</button>
-                    <button class="control-btn" id="stopBtn" disabled>Stop</button>
-                    <button class="control-btn" id="resetBtn" disabled>Reset</button>
+                    <button class="control-btn" id="startBtn" onclick="startTurbine()" style="background: var(--success-color);">
+                        ▶ Start Turbine
+                    </button>
+                    <button class="control-btn" id="stopBtn" onclick="stopTurbine()" style="background: var(--danger-color);">
+                        ⬛ Stop Turbine
+                    </button>
                 </div>
             </div>
         </main>
@@ -123,6 +140,157 @@
             <canvas id="fullscreenGraph"></canvas>
         </div>
     </div>
+
+    <script>
+        // Fan control functions
+        let fanRunning = false;
+        let currentSpeed = 0;
+
+        // Sync slider and input
+        const speedSlider = document.getElementById('speedSlider');
+        const speedInput = document.getElementById('speedInput');
+
+        speedSlider.addEventListener('input', function() {
+            speedInput.value = this.value;
+            if (fanRunning) {
+                setFanSpeed(parseInt(this.value));
+            }
+        });
+
+        speedInput.addEventListener('change', function() {
+            let value = parseInt(this.value);
+            if (isNaN(value)) value = 0;
+            value = Math.max(0, Math.min(100, value));
+            this.value = value;
+            speedSlider.value = value;
+            if (fanRunning) {
+                setFanSpeed(value);
+            }
+        });
+
+        function startFan() {
+            const speed = parseInt(speedInput.value);
+            fetch('/api/fan/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ speed: speed })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    fanRunning = true;
+                    currentSpeed = speed;
+                    updateFanUI();
+                    showNotification('Fan Started', `Fan running at ${speed}%`, 'success');
+                } else {
+                    showNotification('Error', data.message || 'Failed to start fan', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error starting fan:', error);
+                showNotification('Error', 'Failed to start fan', 'error');
+            });
+        }
+
+        function stopFan() {
+            fetch('/api/fan/stop', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    fanRunning = false;
+                    currentSpeed = 0;
+                    updateFanUI();
+                    showNotification('Fan Stopped', 'Fan has been stopped', 'success');
+                } else {
+                    showNotification('Error', data.message || 'Failed to stop fan', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error stopping fan:', error);
+                showNotification('Error', 'Failed to stop fan', 'error');
+            });
+        }
+
+        function setFanSpeed(speed) {
+            fetch('/api/fan/speed', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ speed: speed })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    currentSpeed = speed;
+                    updateFanUI();
+                }
+            })
+            .catch(error => {
+                console.error('Error setting fan speed:', error);
+            });
+        }
+
+        function updateFanUI() {
+            const statusIndicator = document.getElementById('statusIndicator');
+            const statusText = document.getElementById('statusText');
+            const startBtn = document.getElementById('startBtn');
+            const stopBtn = document.getElementById('stopBtn');
+
+            if (fanRunning) {
+                statusIndicator.style.background = 'var(--success-color)';
+                statusText.textContent = `Fan Running - ${currentSpeed}%`;
+                statusText.style.color = 'var(--success-color)';
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                speedSlider.disabled = false;
+                speedInput.disabled = false;
+            } else {
+                statusIndicator.style.background = 'var(--danger-color)';
+                statusText.textContent = 'Fan Off';
+                statusText.style.color = 'var(--text-primary)';
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+                speedSlider.disabled = true;
+                speedInput.disabled = true;
+            }
+        }
+
+        function showNotification(title, message, type) {
+            // Simple notification - you can enhance this
+            console.log(`${type.toUpperCase()}: ${title} - ${message}`);
+        }
+
+        // Load fan status on page load
+        fetch('/api/fan/status')
+            .then(response => response.json())
+            .then(data => {
+                fanRunning = data.running || false;
+                currentSpeed = data.speed || 0;
+                speedSlider.value = currentSpeed;
+                speedInput.value = currentSpeed;
+                updateFanUI();
+            })
+            .catch(error => {
+                console.error('Error loading fan status:', error);
+            });
+
+        // Update fan status periodically
+        setInterval(() => {
+            fetch('/api/fan/status')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.running !== fanRunning || data.speed !== currentSpeed) {
+                        fanRunning = data.running || false;
+                        currentSpeed = data.speed || 0;
+                        speedSlider.value = currentSpeed;
+                        speedInput.value = currentSpeed;
+                        updateFanUI();
+                    }
+                })
+                .catch(error => console.error('Error checking turbine status:', error));
+        }, 2000);
+    </script>
 
     <script src="{{ url_for('static', filename='js/main.js') }}?v=7"></script>
 </body>
