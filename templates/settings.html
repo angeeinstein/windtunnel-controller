@@ -1860,12 +1860,6 @@
                     console.error('Failed to load settings:', error);
                 });
         });
-        
-        // Listen for settings updates from server (when changed on another device)
-        socket.on('settings_updated', (settings) => {
-            console.log('Settings updated from server:', settings);
-            // Optionally reload the page or update UI
-        });
     </script>
     
     <!-- Socket.IO for real-time updates -->
@@ -1880,6 +1874,12 @@
         
         socket.on('disconnect', () => {
             console.log('WebSocket disconnected from server');
+        });
+        
+        // Listen for settings updates from server (when changed on another device)
+        socket.on('settings_updated', (settings) => {
+            console.log('Settings updated from server:', settings);
+            // Optionally reload the page or update UI
         });
         
         // Listen for update progress via WebSocket

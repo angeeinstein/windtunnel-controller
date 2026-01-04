@@ -21,6 +21,16 @@ const MAX_SPARKLINE_POINTS = 50;
 const graphDataCache = {}; // {sensorId: [{timestamp, value}, ...]}
 const UPDATE_INTERVAL_MS = 200; // Fixed at 200ms (5Hz)
 
+// Fullscreen graph variables
+let currentGraphKey = null;
+let fullscreenAnimationFrame = null;
+let graphZoomX = 0.01; // X-axis zoom (time) - default to 10 seconds (20 points at 500ms)
+let graphZoomY = 1.0; // Y-axis zoom (value range)
+let graphStartTime = null;
+let graphScrollOffset = 0; // Scroll back in time (0 = live, positive = seconds in past)
+let historicalData = null; // Cache for historical data
+let isLoadingHistorical = false;
+
 // Load settings and sensors from server
 async function loadConfiguration() {
     try {
@@ -296,16 +306,6 @@ document.getElementById('startBtn').addEventListener('click', () => {
     // TODO: Implement start functionality
 });
 
-document.getElementById('stopBtn').addEventListener('click', () => {
-    console.log('Stop button clicked');
-    // TODO: Implement stop functionality
-});
-
-document.getElementById('resetBtn').addEventListener('click', () => {
-    console.log('Reset button clicked');
-    // TODO: Implement reset functionality
-});
-
 // Initial connection message
 console.log('Wind Tunnel Control System initialized');
 
@@ -372,16 +372,6 @@ function updateAllSparklines() {
         drawSparkline(canvasId, data, color);
     });
 }
-
-// Fullscreen graph variables
-let currentGraphKey = null;
-let fullscreenAnimationFrame = null;
-let graphZoomX = 0.01; // X-axis zoom (time) - default to 10 seconds (20 points at 500ms)
-let graphZoomY = 1.0; // Y-axis zoom (value range)
-let graphStartTime = null;
-let graphScrollOffset = 0; // Scroll back in time (0 = live, positive = seconds in past)
-let historicalData = null; // Cache for historical data
-let isLoadingHistorical = false;
 
 // Touch handling for pinch zoom
 let touchStartDistance = 0;
