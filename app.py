@@ -178,6 +178,30 @@ SENSOR_TYPES = {
             {'name': 'formula', 'label': 'Formula (use sensor IDs)', 'type': 'text', 'placeholder': 'e.g., lift / drag'}
         ]
     },
+    'force_balance_lift': {
+        'name': 'Force Balance - Lift',
+        'category': 'calculated',
+        'description': 'Multi-sensor force balance with calibration for lift measurement',
+        'fields': [
+            {'name': 'source_sensor_1', 'label': 'Lift Load Cell 1 (HX711)', 'type': 'sensor_select', 'sensor_type': 'HX711', 'required': True},
+            {'name': 'source_sensor_2', 'label': 'Lift Load Cell 2 (HX711)', 'type': 'sensor_select', 'sensor_type': 'HX711', 'required': True},
+            {'name': 'source_sensor_3', 'label': 'Drag Load Cell (HX711)', 'type': 'sensor_select', 'sensor_type': 'HX711', 'required': True},
+            {'name': 'formula', 'label': 'Geometric Formula', 'type': 'text', 'placeholder': 'e.g., (s1 * 0.254 + s2 * 0.254) / 1000', 'help': 'Use s1, s2, s3 for load cell readings (after tare). Include lever arms and unit conversions.'},
+            {'name': 'calibration_info', 'label': 'Calibration Status', 'type': 'info', 'value': 'Not calibrated - use Calibrate button to tare and set calibration factor'}
+        ]
+    },
+    'force_balance_drag': {
+        'name': 'Force Balance - Drag',
+        'category': 'calculated',
+        'description': 'Multi-sensor force balance with calibration for drag measurement',
+        'fields': [
+            {'name': 'source_sensor_1', 'label': 'Lift Load Cell 1 (HX711)', 'type': 'sensor_select', 'sensor_type': 'HX711', 'required': True},
+            {'name': 'source_sensor_2', 'label': 'Lift Load Cell 2 (HX711)', 'type': 'sensor_select', 'sensor_type': 'HX711', 'required': True},
+            {'name': 'source_sensor_3', 'label': 'Drag Load Cell (HX711)', 'type': 'sensor_select', 'sensor_type': 'HX711', 'required': True},
+            {'name': 'formula', 'label': 'Geometric Formula', 'type': 'text', 'placeholder': 'e.g., s3 * 0.180 / 1000', 'help': 'Use s1, s2, s3 for load cell readings (after tare). Include lever arms and unit conversions.'},
+            {'name': 'calibration_info', 'label': 'Calibration Status', 'type': 'info', 'value': 'Not calibrated - use Calibrate button to tare and set calibration factor'}
+        ]
+    },
     'HX711': {
         'name': 'HX711 Load Cell Amplifier',
         'category': 'hardware',
@@ -1183,6 +1207,82 @@ def read_vl53l0x(sensor, config):
         print(f"Error reading VL53L0X: {e}")
         return 0
 
+def init_force_balance(config):
+    """Initialize force balance sensor - no hardware init needed, just config validation"""
+    try:
+        # Validate required fields
+        if not config.get('source_sensor_1') or not config.get('source_sensor_2') or not config.get('source_sensor_3'):
+            print("Error: Force balance requires 3 source sensors")
+            return None
+        
+        if not config.get('formula'):
+            print("Error: Force balance requires geometric formula")
+            return None
+        
+        # Return config as "instance" - we'll use it during reads
+        return {
+            'config': config,
+            'calibration': config.get('calibration', {
+                'tare_offsets': [0, 0, 0],
+                'calibration_factor': 1.0,
+                'is_calibrated': False
+            })
+        }
+    except Exception as e:
+        print(f"Error initializing force balance: {e}")
+        return None
+
+def read_force_balance(instance, config):
+    """Read force balance value using geometric formula and calibration"""
+    try:
+        if instance is None:
+            return 0.0
+        
+        # Get source sensor IDs
+        s1_id = config.get('source_sensor_1')
+        s2_id = config.get('source_sensor_2')
+        s3_id = config.get('source_sensor_3')
+        
+        # Read raw values from source sensors
+        raw_s1 = sensor_last_values.get(s1_id, 0)
+        raw_s2 = sensor_last_values.get(s2_id, 0)
+        raw_s3 = sensor_last_values.get(s3_id, 0)
+        
+        # Apply tare offsets
+        calibration = instance.get('calibration', {})
+        tare_offsets = calibration.get('tare_offsets', [0, 0, 0])
+        
+        s1 = raw_s1 - tare_offsets[0]
+        s2 = raw_s2 - tare_offsets[1]
+        s3 = raw_s3 - tare_offsets[2]
+        
+        # Evaluate geometric formula
+        formula = config.get('formula', '0')
+        
+        # Replace s1, s2, s3 in formula
+        eval_formula = formula.replace('s1', str(s1)).replace('s2', str(s2)).replace('s3', str(s3))
+        
+        # Replace ^ with ** for power operation
+        eval_formula = eval_formula.replace('^', '**')
+        
+        # Validate formula safety
+        if not re.match(r'^[\d\s\.\+\-\*/\(\)\*]+$', eval_formula):
+            print(f"Warning: Invalid formula: {formula}")
+            return 0.0
+        
+        # Calculate raw result
+        raw_result = eval(eval_formula)
+        
+        # Apply calibration factor
+        calibration_factor = calibration.get('calibration_factor', 1.0)
+        final_value = raw_result * calibration_factor
+        
+        return float(final_value)
+        
+    except Exception as e:
+        print(f"Error reading force balance: {e}")
+        return 0.0
+
 # Sensor handler registry
 SENSOR_HANDLERS = {
     'HX711': {'init': init_hx711, 'read': read_hx711, 'cleanup': cleanup_hx711},
@@ -1196,7 +1296,9 @@ SENSOR_HANDLERS = {
     'XGZP6847A': {'init': init_xgzp6847a, 'read': read_xgzp6847a},
     'BME280': {'init': init_bme280, 'read': read_bme280},
     'INA219': {'init': init_ina219, 'read': read_ina219},
-    'VL53L0X': {'init': init_vl53l0x, 'read': read_vl53l0x}
+    'VL53L0X': {'init': init_vl53l0x, 'read': read_vl53l0x},
+    'force_balance_lift': {'init': init_force_balance, 'read': read_force_balance},
+    'force_balance_drag': {'init': init_force_balance, 'read': read_force_balance}
 }
 
 
@@ -1269,13 +1371,17 @@ def generate_mock_data():
     data = {'timestamp': time.time()}
     sensor_values = {}
     
-    # Generate data for each enabled sensor
+    # First pass: Generate data for base sensors (hardware and mock)
     for sensor in sensors:
         if not sensor.get('enabled', True):
             continue
             
         sensor_id = sensor['id']
         sensor_type = sensor['type']
+        
+        # Skip calculated and force_balance sensors in first pass
+        if sensor_type in ['calculated', 'force_balance_lift', 'force_balance_drag']:
+            continue
         
         print(f"Processing sensor: {sensor_id}, type: {sensor_type}, name: {sensor['name']}")
         
@@ -1421,6 +1527,33 @@ def generate_mock_data():
                 print(f"Warning: Circular dependency or missing reference for sensor {sensor['id']}")
                 data[sensor['id']] = 0
             break
+    
+    # Second pass: Process force balance sensors (depend on HX711 readings)
+    force_balance_sensors = [s for s in sensors if s.get('enabled', True) and s['type'] in ['force_balance_lift', 'force_balance_drag']]
+    
+    for sensor in force_balance_sensors:
+        sensor_id = sensor['id']
+        sensor_type = sensor['type']
+        
+        print(f"Processing force balance sensor: {sensor_id} ({sensor_type})")
+        
+        # Initialize if needed
+        if sensor_id not in sensor_instances:
+            print(f"Initializing force balance sensor: {sensor_id}")
+            handler = SENSOR_HANDLERS[sensor_type]
+            instance = handler['init'](sensor.get('config', {}))
+            sensor_instances[sensor_id] = instance
+        
+        # Read value
+        if sensor_id in sensor_instances and sensor_instances[sensor_id] is not None:
+            handler = SENSOR_HANDLERS[sensor_type]
+            value = handler['read'](sensor_instances[sensor_id], sensor.get('config', {}))
+            sensor_values[sensor_id] = value
+            sensor_last_values[sensor_id] = value
+            data[sensor_id] = value
+        else:
+            # Failed to initialize
+            data[sensor_id] = 0.0
     
     return data
 
@@ -2626,6 +2759,249 @@ def refresh_sensor_libraries():
         'status': 'success',
         'libraries': available_sensor_libraries
     })
+
+# Force Balance Calibration Endpoints
+@app.route('/api/sensor/<sensor_id>/calibration', methods=['GET'])
+def get_calibration(sensor_id):
+    """Get current calibration data for a force balance sensor"""
+    try:
+        sensors = current_settings.get('sensors', [])
+        sensor = next((s for s in sensors if s['id'] == sensor_id), None)
+        
+        if not sensor:
+            return jsonify({'error': 'Sensor not found'}), 404
+        
+        if sensor['type'] not in ['force_balance_lift', 'force_balance_drag']:
+            return jsonify({'error': 'Not a force balance sensor'}), 400
+        
+        calibration = sensor.get('config', {}).get('calibration', {
+            'is_calibrated': False,
+            'tare_offsets': [0, 0, 0],
+            'calibration_factor': 1.0
+        })
+        
+        return jsonify(calibration)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/sensor/<sensor_id>/calibration/start', methods=['POST'])
+def start_calibration(sensor_id):
+    """Start a new calibration session"""
+    try:
+        sensors = current_settings.get('sensors', [])
+        sensor = next((s for s in sensors if s['id'] == sensor_id), None)
+        
+        if not sensor:
+            return jsonify({'error': 'Sensor not found'}), 404
+        
+        if sensor['type'] not in ['force_balance_lift', 'force_balance_drag']:
+            return jsonify({'error': 'Not a force balance sensor'}), 400
+        
+        # Initialize empty calibration session
+        return jsonify({
+            'status': 'ready',
+            'message': 'Calibration session started',
+            'step': 'tare'
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/sensor/<sensor_id>/calibration/tare', methods=['POST'])
+def capture_tare(sensor_id):
+    """Capture tare readings (average of N samples)"""
+    try:
+        data = request.get_json()
+        num_samples = data.get('num_samples', 50)
+        
+        sensors = current_settings.get('sensors', [])
+        sensor = next((s for s in sensors if s['id'] == sensor_id), None)
+        
+        if not sensor:
+            return jsonify({'error': 'Sensor not found'}), 404
+        
+        config = sensor.get('config', {})
+        s1_id = config.get('source_sensor_1')
+        s2_id = config.get('source_sensor_2')
+        s3_id = config.get('source_sensor_3')
+        
+        if not all([s1_id, s2_id, s3_id]):
+            return jsonify({'error': 'Source sensors not configured'}), 400
+        
+        # Collect samples
+        import time
+        s1_samples = []
+        s2_samples = []
+        s3_samples = []
+        
+        for i in range(num_samples):
+            s1_samples.append(sensor_last_values.get(s1_id, 0))
+            s2_samples.append(sensor_last_values.get(s2_id, 0))
+            s3_samples.append(sensor_last_values.get(s3_id, 0))
+            time.sleep(0.05)  # 50ms between samples (20Hz)
+        
+        # Calculate averages
+        tare_offsets = [
+            sum(s1_samples) / len(s1_samples),
+            sum(s2_samples) / len(s2_samples),
+            sum(s3_samples) / len(s3_samples)
+        ]
+        
+        return jsonify({
+            'status': 'success',
+            'tare_offsets': tare_offsets,
+            'num_samples': num_samples,
+            'message': f'Tare captured: {num_samples} samples averaged'
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/sensor/<sensor_id>/calibration/capture', methods=['POST'])
+def capture_calibration_point(sensor_id):
+    """Capture calibration point with known applied force"""
+    try:
+        data = request.get_json()
+        applied_force = data.get('applied_force')
+        tare_offsets = data.get('tare_offsets', [0, 0, 0])
+        num_samples = data.get('num_samples', 50)
+        
+        if applied_force is None or applied_force <= 0:
+            return jsonify({'error': 'Valid applied force required'}), 400
+        
+        sensors = current_settings.get('sensors', [])
+        sensor = next((s for s in sensors if s['id'] == sensor_id), None)
+        
+        if not sensor:
+            return jsonify({'error': 'Sensor not found'}), 404
+        
+        config = sensor.get('config', {})
+        s1_id = config.get('source_sensor_1')
+        s2_id = config.get('source_sensor_2')
+        s3_id = config.get('source_sensor_3')
+        formula = config.get('formula', '0')
+        
+        if not all([s1_id, s2_id, s3_id]):
+            return jsonify({'error': 'Source sensors not configured'}), 400
+        
+        # Collect samples
+        import time
+        s1_samples = []
+        s2_samples = []
+        s3_samples = []
+        
+        for i in range(num_samples):
+            s1_samples.append(sensor_last_values.get(s1_id, 0))
+            s2_samples.append(sensor_last_values.get(s2_id, 0))
+            s3_samples.append(sensor_last_values.get(s3_id, 0))
+            time.sleep(0.05)
+        
+        # Calculate averages
+        s1_avg = sum(s1_samples) / len(s1_samples)
+        s2_avg = sum(s2_samples) / len(s2_samples)
+        s3_avg = sum(s3_samples) / len(s3_samples)
+        
+        # Apply tare
+        s1_tared = s1_avg - tare_offsets[0]
+        s2_tared = s2_avg - tare_offsets[1]
+        s3_tared = s3_avg - tare_offsets[2]
+        
+        # Evaluate formula with tared values
+        eval_formula = formula.replace('s1', str(s1_tared)).replace('s2', str(s2_tared)).replace('s3', str(s3_tared))
+        eval_formula = eval_formula.replace('^', '**')
+        
+        if not re.match(r'^[\d\s\.\+\-\*/\(\)\*]+$', eval_formula):
+            return jsonify({'error': 'Invalid formula'}), 400
+        
+        raw_result = eval(eval_formula)
+        
+        # Calculate calibration factor
+        calibration_factor = applied_force / raw_result if raw_result != 0 else 1.0
+        
+        return jsonify({
+            'status': 'success',
+            'raw_result': raw_result,
+            'calibration_factor': calibration_factor,
+            'applied_force': applied_force,
+            'num_samples': num_samples,
+            'message': f'Calibration point captured'
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/sensor/<sensor_id>/calibration/save', methods=['POST'])
+def save_calibration(sensor_id):
+    """Save calibration data to sensor config"""
+    try:
+        data = request.get_json()
+        tare_offsets = data.get('tare_offsets')
+        calibration_factor = data.get('calibration_factor')
+        
+        if not tare_offsets or calibration_factor is None:
+            return jsonify({'error': 'Missing calibration data'}), 400
+        
+        sensors = current_settings.get('sensors', [])
+        sensor = next((s for s in sensors if s['id'] == sensor_id), None)
+        
+        if not sensor:
+            return jsonify({'error': 'Sensor not found'}), 404
+        
+        # Update sensor config
+        if 'config' not in sensor:
+            sensor['config'] = {}
+        
+        sensor['config']['calibration'] = {
+            'is_calibrated': True,
+            'tare_offsets': tare_offsets,
+            'calibration_factor': calibration_factor,
+            'calibrated_at': time.time()
+        }
+        
+        # Update sensor instance if it exists
+        if sensor_id in sensor_instances and sensor_instances[sensor_id]:
+            sensor_instances[sensor_id]['calibration'] = sensor['config']['calibration']
+        
+        # Save settings
+        current_settings['sensors'] = sensors
+        save_settings_to_file(current_settings)
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Calibration saved successfully'
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/sensor/<sensor_id>/calibration', methods=['DELETE'])
+def reset_calibration(sensor_id):
+    """Reset/clear calibration data"""
+    try:
+        sensors = current_settings.get('sensors', [])
+        sensor = next((s for s in sensors if s['id'] == sensor_id), None)
+        
+        if not sensor:
+            return jsonify({'error': 'Sensor not found'}), 404
+        
+        # Reset calibration
+        if 'config' in sensor:
+            sensor['config']['calibration'] = {
+                'is_calibrated': False,
+                'tare_offsets': [0, 0, 0],
+                'calibration_factor': 1.0
+            }
+        
+        # Update sensor instance
+        if sensor_id in sensor_instances and sensor_instances[sensor_id]:
+            sensor_instances[sensor_id]['calibration'] = sensor['config']['calibration']
+        
+        # Save settings
+        current_settings['sensors'] = sensors
+        save_settings_to_file(current_settings)
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Calibration reset'
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/update', methods=['POST'])
 def trigger_update():

@@ -1120,6 +1120,45 @@
                 return html;
             }
             
+            // For force balance sensors, show Configure + Calibrate buttons
+            if (sensor.type === 'force_balance_lift' || sensor.type === 'force_balance_drag') {
+                const isConfigured = sensor.config && sensor.config.source_sensor_1 && sensor.config.source_sensor_2 && sensor.config.source_sensor_3;
+                const isCalibrated = sensor.config && sensor.config.calibration && sensor.config.calibration.is_calibrated;
+                const statusClass = isCalibrated ? 'connected' : (isConfigured ? 'disconnected' : 'unconfigured');
+                const statusText = isCalibrated ? 'Calibrated' : (isConfigured ? 'Configured (Not Calibrated)' : 'Not Configured');
+                const dotClass = isCalibrated ? 'green' : (isConfigured ? 'yellow' : 'red');
+                
+                html += `
+                    <div style="margin: 15px 0;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <span class="sensor-status ${statusClass}">
+                                <span class="status-dot ${dotClass}"></span>
+                                ${statusText}
+                            </span>
+                            <small style="color: var(--text-secondary);">${type.name}</small>
+                        </div>
+                        <button class="configure-hardware-btn" onclick="openHardwareConfig(${index}); event.preventDefault();" style="margin-bottom: 8px;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="3"></circle>
+                                <path d="M12 1v6m0 6v6m8.66-13.66l-4.24 4.24m-4.84 4.84l-4.24 4.24M23 12h-6m-6 0H1m20.66 8.66l-4.24-4.24m-4.84-4.84l-4.24-4.24"></path>
+                            </svg>
+                            Configure Settings
+                        </button>
+                        <button class="configure-hardware-btn" onclick="openCalibration('${sensor.id}'); event.preventDefault();" 
+                                ${!isConfigured ? 'disabled' : ''}
+                                style="background: var(--success-color); ${!isConfigured ? 'opacity: 0.5; cursor: not-allowed;' : ''}">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                                <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                            </svg>
+                            ${isCalibrated ? 'Re-Calibrate' : 'Calibrate Force Balance'}
+                        </button>
+                    </div>
+                `;
+                html += '</div>';
+                return html;
+            }
+            
             // For calculated type, show available sensor IDs
             if (sensor.type === 'calculated') {
                 html += '<div style="background: #e8f5e9; padding: 12px; border-radius: 6px; margin-bottom: 10px; font-size: 0.9rem;">';
@@ -1432,6 +1471,24 @@
                 html += field.value;
                 html += `</div>`;
                 // Info fields don't need an id since they're not saved
+            } else if (field.type === 'sensor_select') {
+                // Dropdown to select another sensor (e.g., for force balance source sensors)
+                const filterType = field.sensor_type; // e.g., 'HX711'
+                const availableSensors = sensors.filter(s => s.type === filterType);
+                
+                html += `<select id="hw_${field.name}" style="width: 100%; padding: 10px; border: 2px solid var(--border-color); border-radius: 6px; font-size: 1rem; background: var(--bg-secondary);">`;
+                html += `<option value="">-- Select ${field.label} --</option>`;
+                
+                availableSensors.forEach(s => {
+                    const isSelected = value === s.id;
+                    html += `<option value="${s.id}" ${isSelected ? 'selected' : ''}>${s.name} (${s.id})</option>`;
+                });
+                
+                html += `</select>`;
+                
+                if (availableSensors.length === 0) {
+                    html += `<p style="font-size: 0.8rem; color: var(--danger); margin-top: 6px;">No ${filterType} sensors available. Please add ${filterType} sensors first.</p>`;
+                }
             } else if (field.type === 'select') {
                 html += `<select id="hw_${field.name}" style="width: 100%; padding: 10px; border: 2px solid var(--border-color); border-radius: 6px; font-size: 1rem;">`;
                 field.options.forEach(option => {
@@ -1717,6 +1774,275 @@
             if (percent >= 50) return '▂▄▆'; // Good signal
             if (percent >= 25) return '▂▄'; // Fair signal
             return '▂'; // Weak signal
+        }
+
+        // Force Balance Calibration
+        let calibrationState = {
+            sensorId: null,
+            step: 1,
+            tare_offsets: null,
+            calibration_factor: null,
+            raw_result: null,
+            applied_force: null
+        };
+
+        async function openCalibration(sensorId) {
+            calibrationState = {
+                sensorId: sensorId,
+                step: 1,
+                tare_offsets: null,
+                calibration_factor: null,
+                raw_result: null,
+                applied_force: null
+            };
+            
+            document.getElementById('calibrationModal').style.display = 'flex';
+            renderCalibrationStep();
+        }
+
+        function closeCalibrationModal() {
+            document.getElementById('calibrationModal').style.display = 'none';
+            calibrationState = { sensorId: null, step: 1, tare_offsets: null, calibration_factor: null };
+        }
+
+        function renderCalibrationStep() {
+            const body = document.getElementById('calibrationBody');
+            const footer = document.getElementById('calibrationFooter');
+            
+            if (calibrationState.step === 1) {
+                // Step 1: Tare
+                body.innerHTML = `
+                    <div style="text-align: center; padding: 20px;">
+                        <h3 style="color: var(--primary-color); margin-bottom: 16px;">Step 1: Tare (Zero Point)</h3>
+                        <p style="color: var(--text-secondary); margin-bottom: 24px;">
+                            Remove all external loads from the force balance.<br>
+                            Only the structure's own weight should be present.
+                        </p>
+                        <div id="tareReadings" style="background: var(--bg-secondary); padding: 20px; border-radius: 8px; margin: 20px 0;">
+                            <p style="margin-bottom: 12px; font-weight: 600;">Current Readings:</p>
+                            <div id="liveReadings" style="font-family: monospace; font-size: 1.1rem; color: var(--primary-color);">
+                                Loading...
+                            </div>
+                        </div>
+                        <p style="font-size: 0.9rem; color: var(--text-secondary); font-style: italic;">
+                            The system will average 50 samples (~2.5 seconds) when you click "Capture Tare"
+                        </p>
+                    </div>
+                `;
+                
+                footer.innerHTML = `
+                    <button class="cancel-btn" onclick="closeCalibrationModal()">Cancel</button>
+                    <button class="primary-btn" onclick="captureTare()">Capture Tare</button>
+                `;
+                
+                startLiveReadings();
+                
+            } else if (calibrationState.step === 2) {
+                // Step 2: Apply known force
+                body.innerHTML = `
+                    <div style="text-align: center; padding: 20px;">
+                        <h3 style="color: var(--primary-color); margin-bottom: 16px;">Step 2: Apply Known Force</h3>
+                        <p style="color: var(--text-secondary); margin-bottom: 16px;">
+                            Apply a known force to the force balance (lift or drag, depending on sensor type).
+                        </p>
+                        <div style="margin: 24px 0;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600;">Applied Force (Newtons):</label>
+                            <input type="number" id="appliedForce" step="0.01" min="0.01" placeholder="e.g., 10.0" 
+                                   style="width: 200px; padding: 12px; font-size: 1.2rem; text-align: center; border: 2px solid var(--border-color); border-radius: 6px;">
+                        </div>
+                        <div id="calibReadings" style="background: var(--bg-secondary); padding: 20px; border-radius: 8px; margin: 20px 0;">
+                            <p style="margin-bottom: 12px; font-weight: 600;">Current Readings (Tared):</p>
+                            <div id="liveReadings" style="font-family: monospace; font-size: 1.1rem; color: var(--primary-color);">
+                                Loading...
+                            </div>
+                        </div>
+                        <p style="font-size: 0.9rem; color: var(--text-secondary); font-style: italic;">
+                            The system will average 50 samples and calculate the calibration factor
+                        </p>
+                    </div>
+                `;
+                
+                footer.innerHTML = `
+                    <button class="secondary-btn" onclick="calibrationState.step = 1; renderCalibrationStep()">Back</button>
+                    <button class="primary-btn" onclick="captureCalibrationPoint()">Capture Calibration</button>
+                `;
+                
+                startLiveReadings();
+                
+            } else if (calibrationState.step === 3) {
+                // Step 3: Review and save
+                body.innerHTML = `
+                    <div style="text-align: center; padding: 20px;">
+                        <h3 style="color: var(--success-color); margin-bottom: 16px;">✓ Calibration Complete</h3>
+                        <div style="background: var(--bg-secondary); padding: 24px; border-radius: 8px; margin: 20px 0; text-align: left;">
+                            <h4 style="margin-bottom: 16px; color: var(--primary-color);">Calibration Results:</h4>
+                            <p style="margin: 8px 0;"><strong>Tare Offsets:</strong></p>
+                            <p style="font-family: monospace; margin-left: 20px;">
+                                LC1: ${calibrationState.tare_offsets[0].toFixed(2)}<br>
+                                LC2: ${calibrationState.tare_offsets[1].toFixed(2)}<br>
+                                LC3: ${calibrationState.tare_offsets[2].toFixed(2)}
+                            </p>
+                            <p style="margin: 16px 0 8px 0;"><strong>Applied Force:</strong> ${calibrationState.applied_force} N</p>
+                            <p style="margin: 8px 0;"><strong>Formula Result (Raw):</strong> ${calibrationState.raw_result.toFixed(4)}</p>
+                            <p style="margin: 8px 0;"><strong>Calibration Factor:</strong> ${calibrationState.calibration_factor.toFixed(6)}</p>
+                        </div>
+                        <p style="color: var(--text-secondary); margin-top: 16px;">
+                            Click "Save Calibration" to apply these settings to your force balance sensor.
+                        </p>
+                    </div>
+                `;
+                
+                footer.innerHTML = `
+                    <button class="secondary-btn" onclick="calibrationState.step = 2; renderCalibrationStep()">Back</button>
+                    <button class="primary-btn" onclick="saveCalibration()">Save Calibration</button>
+                `;
+            }
+        }
+
+        let liveReadingsInterval = null;
+
+        function startLiveReadings() {
+            stopLiveReadings(); // Clear any existing interval
+            
+            liveReadingsInterval = setInterval(async () => {
+                const sensor = sensors.find(s => s.id === calibrationState.sensorId);
+                if (!sensor) return;
+                
+                const config = sensor.config || {};
+                const s1_id = config.source_sensor_1;
+                const s2_id = config.source_sensor_2;
+                const s3_id = config.source_sensor_3;
+                
+                // In real implementation, you'd fetch actual sensor values
+                // For now, show placeholder
+                const readingsDiv = document.getElementById('liveReadings');
+                if (readingsDiv) {
+                    if (calibrationState.step === 1) {
+                        readingsDiv.innerHTML = `
+                            LC1 (${s1_id}): <span style="color: var(--success-color);">Reading...</span><br>
+                            LC2 (${s2_id}): <span style="color: var(--success-color);">Reading...</span><br>
+                            LC3 (${s3_id}): <span style="color: var(--success-color);">Reading...</span>
+                        `;
+                    } else if (calibrationState.step === 2) {
+                        readingsDiv.innerHTML = `
+                            LC1 (Tared): <span style="color: var(--success-color);">Reading...</span><br>
+                            LC2 (Tared): <span style="color: var(--success-color);">Reading...</span><br>
+                            LC3 (Tared): <span style="color: var(--success-color);">Reading...</span>
+                        `;
+                    }
+                }
+            }, 200);
+        }
+
+        function stopLiveReadings() {
+            if (liveReadingsInterval) {
+                clearInterval(liveReadingsInterval);
+                liveReadingsInterval = null;
+            }
+        }
+
+        async function captureTare() {
+            stopLiveReadings();
+            const notification = showNotification('Capturing Tare', 'Averaging 50 samples...', 'warning', true);
+            
+            try {
+                const response = await fetch(`/api/sensor/${calibrationState.sensorId}/calibration/tare`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ num_samples: 50 })
+                });
+                
+                const result = await response.json();
+                notification.remove();
+                
+                if (result.status === 'success') {
+                    calibrationState.tare_offsets = result.tare_offsets;
+                    calibrationState.step = 2;
+                    renderCalibrationStep();
+                    showNotification('Tare Captured', result.message, 'success');
+                } else {
+                    showNotification('Error', result.error || 'Failed to capture tare', 'error');
+                    startLiveReadings();
+                }
+            } catch (error) {
+                notification.remove();
+                showNotification('Error', 'Failed to capture tare: ' + error.message, 'error');
+                startLiveReadings();
+            }
+        }
+
+        async function captureCalibrationPoint() {
+            const appliedForce = parseFloat(document.getElementById('appliedForce').value);
+            
+            if (!appliedForce || appliedForce <= 0) {
+                showNotification('Invalid Input', 'Please enter a valid applied force (> 0 Newtons)', 'error');
+                return;
+            }
+            
+            stopLiveReadings();
+            const notification = showNotification('Capturing Calibration', 'Averaging 50 samples...', 'warning', true);
+            
+            try {
+                const response = await fetch(`/api/sensor/${calibrationState.sensorId}/calibration/capture`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        applied_force: appliedForce,
+                        tare_offsets: calibrationState.tare_offsets,
+                        num_samples: 50
+                    })
+                });
+                
+                const result = await response.json();
+                notification.remove();
+                
+                if (result.status === 'success') {
+                    calibrationState.calibration_factor = result.calibration_factor;
+                    calibrationState.raw_result = result.raw_result;
+                    calibrationState.applied_force = appliedForce;
+                    calibrationState.step = 3;
+                    renderCalibrationStep();
+                    showNotification('Calibration Captured', result.message, 'success');
+                } else {
+                    showNotification('Error', result.error || 'Failed to capture calibration', 'error');
+                    startLiveReadings();
+                }
+            } catch (error) {
+                notification.remove();
+                showNotification('Error', 'Failed to capture calibration: ' + error.message, 'error');
+                startLiveReadings();
+            }
+        }
+
+        async function saveCalibration() {
+            const notification = showNotification('Saving Calibration', 'Updating sensor configuration...', 'warning', true);
+            
+            try {
+                const response = await fetch(`/api/sensor/${calibrationState.sensorId}/calibration/save`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        tare_offsets: calibrationState.tare_offsets,
+                        calibration_factor: calibrationState.calibration_factor
+                    })
+                });
+                
+                const result = await response.json();
+                notification.remove();
+                
+                if (result.status === 'success') {
+                    showNotification('Calibration Saved', result.message, 'success');
+                    closeCalibrationModal();
+                    
+                    // Reload sensors to show updated status
+                    await loadSensors();
+                } else {
+                    showNotification('Error', result.error || 'Failed to save calibration', 'error');
+                }
+            } catch (error) {
+                notification.remove();
+                showNotification('Error', 'Failed to save calibration: ' + error.message, 'error');
+            }
         }
 
         // Update system
@@ -2043,7 +2369,31 @@
         </div>
     </div>
 
+    <!-- Force Balance Calibration Modal -->
+    <div id="calibrationModal" class="sensor-modal" style="display: none;">
+        <div class="sensor-modal-content" style="max-width: 700px;">
+            <div class="sensor-modal-header">
+                <h2>Force Balance Calibration</h2>
+                <button class="graph-close-btn" onclick="closeCalibrationModal()" style="width: 40px; height: 40px;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            
+            <div class="sensor-modal-body" id="calibrationBody">
+                <!-- Calibration wizard steps will be rendered here -->
+            </div>
+            
+            <div class="sensor-modal-footer" id="calibrationFooter">
+                <!-- Footer buttons will be rendered here -->
+            </div>
+        </div>
+    </div>
+
     <!-- Notification Container -->
+
     <div id="notificationContainer" style="position: fixed; top: 80px; right: 20px; z-index: 10000;"></div>
 
 </body>
