@@ -202,6 +202,18 @@ SENSOR_TYPES = {
             {'name': 'calibration_info', 'label': 'Calibration Status', 'type': 'info', 'value': 'Not calibrated - use Calibrate button to tare and set calibration factor'}
         ]
     },
+    'udp_network': {
+        'name': 'UDP Network Sensor (ESP32/Network)',
+        'category': 'network',
+        'description': 'Receive sensor data over UDP from ESP32 or other network devices',
+        'fields': [
+            {'name': 'udp_port', 'label': 'UDP Port', 'type': 'number', 'default': 5000, 'min': 1024, 'max': 65535, 'help': 'Port to listen on for UDP packets. Multiple sensors can share the same port.'},
+            {'name': 'sensor_id', 'label': 'Sensor ID (Must be unique!)', 'type': 'text', 'placeholder': 'e.g., esp32_temp_1', 'help': 'Each sensor must have a unique ID. Your device must send packets with this exact ID.'},
+            {'name': 'timeout', 'label': 'Timeout (seconds)', 'type': 'number', 'default': 5, 'min': 1, 'max': 60, 'help': 'Mark as disconnected if no data received for this long'},
+            {'name': 'packet_format', 'label': 'Required Packet Format', 'type': 'info', 'value': 'Send JSON via UDP: {"id": "your_sensor_id", "value": 23.5}'},
+            {'name': 'discovery_info', 'label': 'Discovery', 'type': 'info', 'value': 'Tip: Visit /api/udp/devices to see all devices currently sending UDP data'}
+        ]
+    },
     'HX711': {
         'name': 'HX711 Load Cell Amplifier',
         'category': 'hardware',
@@ -361,6 +373,10 @@ SENSOR_TYPES = {
 # Sensor initialization cache and handlers
 sensor_instances = {}  # Cache initialized sensors {sensor_id: instance}
 sensor_last_values = {}  # Cache last reading from each sensor {sensor_id: value}
+
+# UDP sensor data storage
+udp_sensor_data = {}  # {sensor_id: {'value': float, 'timestamp': float, 'port': int}}
+udp_listeners = {}  # {port: socket} - Track active UDP listeners
 
 # Fan control state
 fan_state = {
@@ -1283,6 +1299,118 @@ def read_force_balance(instance, config):
         print(f"Error reading force balance: {e}")
         return 0.0
 
+def udp_listener_thread(port):
+    """Background thread to listen for UDP packets on a specific port"""
+    import socket
+    import json
+    import time
+    
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.settimeout(1.0)  # 1 second timeout for clean shutdown
+    
+    try:
+        sock.bind(('0.0.0.0', port))
+        print(f"UDP listener started on port {port}")
+        
+        while True:
+            try:
+                data, addr = sock.recvfrom(1024)  # Buffer size 1024 bytes
+                
+                # Try to parse JSON
+                try:
+                    packet = json.loads(data.decode('utf-8'))
+                    sensor_id = packet.get('id')
+                    value = packet.get('value')
+                    
+                    if sensor_id and value is not None:
+                        udp_sensor_data[sensor_id] = {
+                            'value': float(value),
+                            'timestamp': time.time(),
+                            'port': port,
+                            'source_ip': addr[0]
+                        }
+                        print(f"UDP received from {addr[0]}: {sensor_id} = {value}")
+                    else:
+                        print(f"UDP packet missing id or value: {packet}")
+                except json.JSONDecodeError:
+                    print(f"UDP packet not valid JSON from {addr[0]}: {data}")
+                except ValueError as e:
+                    print(f"UDP packet value conversion error: {e}")
+                    
+            except socket.timeout:
+                # Normal timeout, continue loop
+                continue
+            except Exception as e:
+                print(f"Error receiving UDP packet on port {port}: {e}")
+                
+    except Exception as e:
+        print(f"Error starting UDP listener on port {port}: {e}")
+    finally:
+        sock.close()
+        print(f"UDP listener stopped on port {port}")
+        if port in udp_listeners:
+            del udp_listeners[port]
+
+def init_udp_sensor(config):
+    """Initialize UDP network sensor"""
+    try:
+        import threading
+        
+        port = int(config.get('udp_port', 5000))
+        sensor_id = config.get('sensor_id')
+        timeout = int(config.get('timeout', 5))
+        
+        if not sensor_id:
+            print("Error: UDP sensor requires sensor_id")
+            return None
+        
+        # Start UDP listener thread if not already running for this port
+        if port not in udp_listeners:
+            listener_thread = threading.Thread(target=udp_listener_thread, args=(port,), daemon=True)
+            listener_thread.start()
+            udp_listeners[port] = listener_thread
+            print(f"Started UDP listener on port {port}")
+        
+        # Return config as instance
+        return {
+            'port': port,
+            'sensor_id': sensor_id,
+            'timeout': timeout
+        }
+        
+    except Exception as e:
+        print(f"Error initializing UDP sensor: {e}")
+        return None
+
+def read_udp_sensor(instance, config):
+    """Read value from UDP sensor data cache"""
+    try:
+        import time
+        
+        if instance is None:
+            return 0.0
+        
+        sensor_id = instance['sensor_id']
+        timeout = instance['timeout']
+        
+        # Check if we have data for this sensor
+        if sensor_id not in udp_sensor_data:
+            return 0.0
+        
+        data = udp_sensor_data[sensor_id]
+        age = time.time() - data['timestamp']
+        
+        # Check if data is stale
+        if age > timeout:
+            return 0.0
+        
+        return float(data['value'])
+        
+    except Exception as e:
+        print(f"Error reading UDP sensor: {e}")
+        return 0.0
+
 # Sensor handler registry
 SENSOR_HANDLERS = {
     'HX711': {'init': init_hx711, 'read': read_hx711, 'cleanup': cleanup_hx711},
@@ -1298,7 +1426,8 @@ SENSOR_HANDLERS = {
     'INA219': {'init': init_ina219, 'read': read_ina219},
     'VL53L0X': {'init': init_vl53l0x, 'read': read_vl53l0x},
     'force_balance_lift': {'init': init_force_balance, 'read': read_force_balance},
-    'force_balance_drag': {'init': init_force_balance, 'read': read_force_balance}
+    'force_balance_drag': {'init': init_force_balance, 'read': read_force_balance},
+    'udp_network': {'init': init_udp_sensor, 'read': read_udp_sensor}
 }
 
 
@@ -2750,6 +2879,36 @@ def get_sensor_status(sensor_id):
             'status': 'unknown',
             'message': f'Error checking status: {str(e)}'
         }), 500
+
+@app.route('/api/udp/devices', methods=['GET'])
+def get_udp_devices():
+    """Get list of all UDP devices currently sending data"""
+    try:
+        import time
+        current_time = time.time()
+        devices = []
+        
+        for sensor_id, data in udp_sensor_data.items():
+            age = current_time - data['timestamp']
+            devices.append({
+                'sensor_id': sensor_id,
+                'value': data['value'],
+                'port': data['port'],
+                'source_ip': data['source_ip'],
+                'last_seen': age,
+                'is_stale': age > 5  # Mark as stale if > 5 seconds
+            })
+        
+        # Sort by most recently seen
+        devices.sort(key=lambda x: x['last_seen'])
+        
+        return jsonify({
+            'devices': devices,
+            'count': len(devices),
+            'active_ports': list(udp_listeners.keys())
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/refresh-sensor-libraries', methods=['POST'])
 def refresh_sensor_libraries():

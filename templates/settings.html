@@ -1159,6 +1159,44 @@
                 return html;
             }
             
+            // For UDP network sensors, show discovery button
+            if (sensor.type === 'udp_network') {
+                const isConfigured = sensor.config && sensor.config.sensor_id;
+                const statusClass = sensor.status === 'connected' ? 'connected' : 'disconnected';
+                const statusText = sensor.status === 'connected' ? 'Receiving Data' : 'No Data Received';
+                const dotClass = sensor.status === 'connected' ? 'green' : 'red';
+                
+                html += `
+                    <div style="margin: 15px 0;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <span class="sensor-status ${statusClass}">
+                                <span class="status-dot ${dotClass}"></span>
+                                ${statusText}
+                            </span>
+                            <small style="color: var(--text-secondary);">${type.name}</small>
+                        </div>
+                        ${isConfigured ? `<p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 8px;">Sensor ID: <strong style="font-family: monospace; color: var(--primary-color);">${sensor.config.sensor_id}</strong></p>` : ''}
+                        <button class="configure-hardware-btn" onclick="openHardwareConfig(${index}); event.preventDefault();" style="margin-bottom: 8px;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="3"></circle>
+                                <path d="M12 1v6m0 6v6m8.66-13.66l-4.24 4.24m-4.84 4.84l-4.24 4.24M23 12h-6m-6 0H1m20.66 8.66l-4.24-4.24m-4.84-4.84l-4.24-4.24"></path>
+                            </svg>
+                            Configure UDP Settings
+                        </button>
+                        <button class="configure-hardware-btn" onclick="showUDPDevices(); event.preventDefault();" style="background: var(--warning-color);">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <circle cx="12" cy="12" r="6"></circle>
+                                <circle cx="12" cy="12" r="2"></circle>
+                            </svg>
+                            Show Detected UDP Devices
+                        </button>
+                    </div>
+                `;
+                html += '</div>';
+                return html;
+            }
+            
             // For calculated type, show available sensor IDs
             if (sensor.type === 'calculated') {
                 html += '<div style="background: #e8f5e9; padding: 12px; border-radius: 6px; margin-bottom: 10px; font-size: 0.9rem;">';
@@ -2042,6 +2080,88 @@
             } catch (error) {
                 notification.remove();
                 showNotification('Error', 'Failed to save calibration: ' + error.message, 'error');
+            }
+        }
+
+        // UDP Device Discovery
+        async function showUDPDevices() {
+            const notification = showNotification('Scanning Network', 'Checking for UDP devices...', 'warning', true);
+            
+            try {
+                const response = await fetch('/api/udp/devices');
+                const result = await response.json();
+                notification.remove();
+                
+                if (result.status === 'success') {
+                    const devices = result.devices || [];
+                    const activeCount = devices.filter(d => !d.is_stale).length;
+                    
+                    if (devices.length === 0) {
+                        showNotification('No Devices Found', 'No UDP devices are currently sending data.\n\nMake sure your ESP32/network device is running and sending packets.', 'warning');
+                        return;
+                    }
+                    
+                    // Build device list HTML
+                    let deviceHTML = `
+                        <div style="background: var(--card-bg); padding: 15px; border-radius: 8px; max-height: 400px; overflow-y: auto;">
+                            <h4 style="margin: 0 0 10px 0; color: var(--text-primary);">Detected UDP Devices (${activeCount} active)</h4>
+                            <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 15px;">
+                                Active UDP Ports: ${result.active_ports.join(', ')}
+                            </p>
+                    `;
+                    
+                    devices.forEach((device, index) => {
+                        const statusColor = device.is_stale ? 'var(--error-color)' : 'var(--success-color)';
+                        const statusText = device.is_stale ? 'Stale (no data >5s)' : 'Active';
+                        const lastSeenText = device.last_seen < 1 ? 'Just now' : `${device.last_seen.toFixed(1)}s ago`;
+                        
+                        deviceHTML += `
+                            <div style="background: var(--bg-color); padding: 12px; border-radius: 6px; margin-bottom: 10px; border-left: 4px solid ${statusColor};">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                    <strong style="font-family: monospace; color: var(--primary-color); font-size: 1.1rem;">${device.sensor_id}</strong>
+                                    <span style="font-size: 0.85rem; color: ${statusColor}; font-weight: bold;">${statusText}</span>
+                                </div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.9rem; color: var(--text-secondary);">
+                                    <div><strong>Value:</strong> ${device.value !== null ? device.value.toFixed(2) : 'N/A'}</div>
+                                    <div><strong>Port:</strong> ${device.port}</div>
+                                    <div><strong>Source IP:</strong> ${device.source_ip}</div>
+                                    <div><strong>Last Seen:</strong> ${lastSeenText}</div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    
+                    deviceHTML += `
+                        </div>
+                        <p style="margin-top: 15px; font-size: 0.9rem; color: var(--text-secondary); text-align: center;">
+                            Use the <strong>Sensor ID</strong> shown above when configuring your UDP sensor.
+                        </p>
+                    `;
+                    
+                    // Show in a modal-like notification
+                    const modal = document.createElement('div');
+                    modal.className = 'notification';
+                    modal.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 600px; width: 90%; z-index: 10000; background: var(--card-bg); padding: 20px; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.3);';
+                    modal.innerHTML = `
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <h3 style="margin: 0; color: var(--text-primary);">UDP Device Discovery</h3>
+                            <button onclick="this.closest('.notification').remove();" style="background: none; border: none; color: var(--text-secondary); font-size: 1.5rem; cursor: pointer; padding: 0; width: 30px; height: 30px;">&times;</button>
+                        </div>
+                        ${deviceHTML}
+                    `;
+                    document.body.appendChild(modal);
+                    
+                    // Auto-remove after 30 seconds
+                    setTimeout(() => {
+                        if (modal.parentNode) modal.remove();
+                    }, 30000);
+                    
+                } else {
+                    showNotification('Error', result.error || 'Failed to retrieve UDP devices', 'error');
+                }
+            } catch (error) {
+                notification.remove();
+                showNotification('Error', 'Failed to scan for UDP devices: ' + error.message, 'error');
             }
         }
 
