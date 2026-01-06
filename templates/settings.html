@@ -762,6 +762,265 @@
             </div>
         </div>
 
+        <!-- ESP32 Network Sensor Code -->
+        <div class="settings-section">
+            <h2>ESP32 Network Sensor Code</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 15px;">
+                Copy this Arduino sketch to your ESP32 to add wireless sensors to your wind tunnel controller. 
+                The code supports automatic discovery and remote configuration.
+            </p>
+            
+            <div style="position: relative;">
+                <textarea id="esp32Code" readonly style="width: 100%; height: 500px; font-family: 'Courier New', monospace; font-size: 0.85rem; padding: 15px; background: #1e1e1e; color: #d4d4d4; border: 1px solid var(--border-color); border-radius: 8px; resize: vertical;">
+// ESP32 Wind Tunnel Network Sensor
+// Supports automatic discovery and remote configuration
+// Required libraries: WiFi, AsyncTCP, ESPAsyncWebServer
+
+#include <WiFi.h>
+#include <WiFiUdp.h>
+#include <ESPAsyncWebServer.h>
+#include <Preferences.h>
+
+// WiFi credentials - CHANGE THESE!
+const char* ssid = "YourWiFiSSID";
+const char* password = "YourWiFiPassword";
+
+// Sensor configuration
+String sensorID = "esp32_sensor_1";  // Unique ID for this sensor
+String sensorType = "temperature";    // Type description
+const char* firmwareVersion = "1.0.0";
+
+// Target configuration (where to send data)
+String targetIP = "";          // Will be set via HTTP config
+int targetPort = 5000;         // Will be set via HTTP config
+int sensorRate = 1000;         // Milliseconds between readings
+bool sendingData = false;      // Data transmission state
+
+// Discovery configuration
+const int discoveryPort = 5555;
+unsigned long lastAnnouncement = 0;
+const unsigned long announcementInterval = 3000;  // 3 seconds
+
+// Sensor reading
+unsigned long lastReading = 0;
+
+WiFiUDP udpData;       // For sending sensor data
+WiFiUDP udpDiscovery;  // For broadcasting announcements
+AsyncWebServer server(80);
+Preferences preferences;
+
+void setup() {
+  Serial.begin(115200);
+  
+  // Load saved configuration
+  preferences.begin("sensor-config", false);
+  sensorID = preferences.getString("sensor_id", sensorID);
+  targetIP = preferences.getString("target_ip", "");
+  targetPort = preferences.getInt("target_port", 5000);
+  sensorRate = preferences.getInt("sensor_rate", 1000);
+  sendingData = preferences.getBool("sending_data", false);
+  preferences.end();
+  
+  // Connect to WiFi
+  Serial.println("Connecting to WiFi...");
+  WiFi.begin(ssid, password);
+  
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  
+  Serial.println("\\nWiFi connected!");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+  Serial.print("MAC address: ");
+  Serial.println(WiFi.macAddress());
+  
+  // Start UDP for discovery announcements
+  udpDiscovery.begin(discoveryPort);
+  
+  // Setup HTTP API endpoints
+  setupHTTPAPI();
+  
+  // Start web server
+  server.begin();
+  Serial.println("HTTP server started");
+  
+  // Initialize your sensor hardware here
+  // pinMode(SENSOR_PIN, INPUT);
+  // ...
+}
+
+void loop() {
+  // Broadcast discovery announcement
+  if (millis() - lastAnnouncement > announcementInterval) {
+    sendAnnouncement();
+    lastAnnouncement = millis();
+  }
+  
+  // Send sensor data if enabled and target configured
+  if (sendingData && targetIP.length() > 0 && millis() - lastReading > sensorRate) {
+    float value = readSensor();
+    sendSensorData(value);
+    lastReading = millis();
+  }
+  
+  delay(10);
+}
+
+void setupHTTPAPI() {
+  // GET /status - Get current configuration and status
+  server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
+    String json = "{";
+    json += "\\"status\\":\\"success\\",";
+    json += "\\"sensor_id\\":\\"" + sensorID + "\\",";
+    json += "\\"sensor_type\\":\\"" + sensorType + "\\",";
+    json += "\\"firmware\\":\\"" + String(firmwareVersion) + "\\",";
+    json += "\\"ip\\":\\"" + WiFi.localIP().toString() + "\\",";
+    json += "\\"mac\\":\\"" + WiFi.macAddress() + "\\",";
+    json += "\\"target_ip\\":\\"" + targetIP + "\\",";
+    json += "\\"target_port\\":" + String(targetPort) + ",";
+    json += "\\"sensor_rate\\":" + String(sensorRate) + ",";
+    json += "\\"sending_data\\":" + String(sendingData ? "true" : "false");
+    json += "}";
+    request->send(200, "application/json", json);
+  });
+  
+  // POST /config - Configure target and parameters
+  server.on("/config", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+    [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+      // Parse JSON body
+      String body = "";
+      for (size_t i = 0; i < len; i++) {
+        body += (char)data[i];
+      }
+      
+      // Simple JSON parsing (for production, use ArduinoJson library)
+      if (body.indexOf("target_ip") > 0) {
+        int start = body.indexOf("\\"target_ip\\":\\"") + 13;
+        int end = body.indexOf("\\"", start);
+        targetIP = body.substring(start, end);
+      }
+      if (body.indexOf("target_port") > 0) {
+        int start = body.indexOf("target_port\\":") + 13;
+        int end = body.indexOf(",", start);
+        if (end == -1) end = body.indexOf("}", start);
+        targetPort = body.substring(start, end).toInt();
+      }
+      if (body.indexOf("sensor_rate") > 0) {
+        int start = body.indexOf("sensor_rate\\":") + 13;
+        int end = body.indexOf(",", start);
+        if (end == -1) end = body.indexOf("}", start);
+        sensorRate = body.substring(start, end).toInt();
+      }
+      if (body.indexOf("sensor_id") > 0) {
+        int start = body.indexOf("\\"sensor_id\\":\\"") + 13;
+        int end = body.indexOf("\\"", start);
+        if (end > start) {
+          sensorID = body.substring(start, end);
+        }
+      }
+      
+      // Save to preferences
+      preferences.begin("sensor-config", false);
+      preferences.putString("sensor_id", sensorID);
+      preferences.putString("target_ip", targetIP);
+      preferences.putInt("target_port", targetPort);
+      preferences.putInt("sensor_rate", sensorRate);
+      preferences.end();
+      
+      Serial.println("Configuration updated:");
+      Serial.println("  Target: " + targetIP + ":" + String(targetPort));
+      Serial.println("  Rate: " + String(sensorRate) + "ms");
+      Serial.println("  Sensor ID: " + sensorID);
+      
+      request->send(200, "application/json", "{\\"status\\":\\"success\\",\\"message\\":\\"Configuration updated\\"}");
+    });
+  
+  // POST /start - Start sending data
+  server.on("/start", HTTP_POST, [](AsyncWebServerRequest *request) {
+    sendingData = true;
+    preferences.begin("sensor-config", false);
+    preferences.putBool("sending_data", true);
+    preferences.end();
+    Serial.println("Data transmission started");
+    request->send(200, "application/json", "{\\"status\\":\\"success\\",\\"message\\":\\"Data transmission started\\"}");
+  });
+  
+  // POST /stop - Stop sending data
+  server.on("/stop", HTTP_POST, [](AsyncWebServerRequest *request) {
+    sendingData = false;
+    preferences.begin("sensor-config", false);
+    preferences.putBool("sending_data", false);
+    preferences.end();
+    Serial.println("Data transmission stopped");
+    request->send(200, "application/json", "{\\"status\\":\\"success\\",\\"message\\":\\"Data transmission stopped\\"}");
+  });
+}
+
+void sendAnnouncement() {
+  String json = "{";
+  json += "\\"type\\":\\"announcement\\",";
+  json += "\\"sensor_id\\":\\"" + sensorID + "\\",";
+  json += "\\"ip\\":\\"" + WiFi.localIP().toString() + "\\",";
+  json += "\\"mac\\":\\"" + WiFi.macAddress() + "\\",";
+  json += "\\"sensor_type\\":\\"" + sensorType + "\\",";
+  json += "\\"firmware\\":\\"" + String(firmwareVersion) + "\\"";
+  json += "}";
+  
+  udpDiscovery.beginPacket("255.255.255.255", discoveryPort);
+  udpDiscovery.print(json);
+  udpDiscovery.endPacket();
+}
+
+void sendSensorData(float value) {
+  String json = "{";
+  json += "\\"id\\":\\"" + sensorID + "\\",";
+  json += "\\"value\\":" + String(value, 2);
+  json += "}";
+  
+  udpData.beginPacket(targetIP.c_str(), targetPort);
+  udpData.print(json);
+  udpData.endPacket();
+  
+  Serial.println("Sent: " + json + " to " + targetIP + ":" + String(targetPort));
+}
+
+float readSensor() {
+  // REPLACE THIS with your actual sensor reading code!
+  // Examples:
+  
+  // Temperature sensor (DHT22, DS18B20, etc.)
+  // return dht.readTemperature();
+  
+  // Analog sensor
+  // return analogRead(SENSOR_PIN) * 3.3 / 4095.0;
+  
+  // Digital sensor with library
+  // return sensor.getValue();
+  
+  // For testing, return random value
+  return 20.0 + random(-50, 50) / 10.0;
+}
+</textarea>
+                <button onclick="copyESP32Code()" style="position: absolute; top: 10px; right: 10px; background: var(--success-color); color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: bold; z-index: 10;">
+                    &#128203; Copy Code
+                </button>
+            </div>
+            
+            <div style="margin-top: 15px; padding: 15px; background: var(--warning-color); color: white; border-radius: 8px;">
+                <strong>&#9888; Setup Instructions:</strong>
+                <ol style="margin: 10px 0 0 20px; line-height: 1.8;">
+                    <li>Install required libraries in Arduino IDE: <code style="background: rgba(0,0,0,0.2); padding: 2px 6px; border-radius: 3px;">WiFi</code>, <code style="background: rgba(0,0,0,0.2); padding: 2px 6px; border-radius: 3px;">AsyncTCP</code>, <code style="background: rgba(0,0,0,0.2); padding: 2px 6px; border-radius: 3px;">ESPAsyncWebServer</code></li>
+                    <li>Change WiFi credentials in the code (lines 11-12)</li>
+                    <li>Customize <code style="background: rgba(0,0,0,0.2); padding: 2px 6px; border-radius: 3px;">sensorID</code> and <code style="background: rgba(0,0,0,0.2); padding: 2px 6px; border-radius: 3px;">sensorType</code> (lines 15-16)</li>
+                    <li>Implement your sensor reading logic in <code style="background: rgba(0,0,0,0.2); padding: 2px 6px; border-radius: 3px;">readSensor()</code> function (bottom of code)</li>
+                    <li>Upload to ESP32 and power on</li>
+                    <li>Click <strong>"Scan & Add Network Sensor"</strong> button above to discover and configure</li>
+                </ol>
+            </div>
+        </div>
+
         <!-- Danger Zone -->
         <div class="settings-section danger-zone">
             <h2>Danger Zone</h2>
@@ -1183,13 +1442,23 @@
                             </svg>
                             Configure UDP Settings
                         </button>
+                        <button class="configure-hardware-btn" onclick="scanNetworkSensors(); event.preventDefault();" style="background: var(--success-color);">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <line x1="22" y1="12" x2="18" y2="12"></line>
+                                <line x1="6" y1="12" x2="2" y2="12"></line>
+                                <line x1="12" y1="6" x2="12" y2="2"></line>
+                                <line x1="12" y1="22" x2="12" y2="18"></line>
+                            </svg>
+                            Scan & Add Network Sensor
+                        </button>
                         <button class="configure-hardware-btn" onclick="showUDPDevices(); event.preventDefault();" style="background: var(--warning-color);">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <circle cx="12" cy="12" r="10"></circle>
                                 <circle cx="12" cy="12" r="6"></circle>
                                 <circle cx="12" cy="12" r="2"></circle>
                             </svg>
-                            Show Detected UDP Devices
+                            View Current Data
                         </button>
                     </div>
                 `;
@@ -2083,6 +2352,178 @@
             }
         }
 
+        // UDP Network Sensor Discovery and Setup
+        async function scanNetworkSensors() {
+            const notification = showNotification('Scanning Network', 'Looking for ESP32 devices broadcasting announcements...', 'warning', true);
+            
+            try {
+                const response = await fetch('/api/udp/discover');
+                const result = await response.json();
+                notification.remove();
+                
+                if (result.status === 'success') {
+                    const devices = result.devices || [];
+                    const activeDevices = devices.filter(d => !d.is_stale);
+                    
+                    if (activeDevices.length === 0) {
+                        showNotification('No Devices Found', 'No ESP32 devices are currently broadcasting.\n\nMake sure your ESP32 is powered on and running the discovery firmware.', 'warning');
+                        return;
+                    }
+                    
+                    // Show discovery modal with devices
+                    showDiscoveryModal(activeDevices);
+                    
+                } else {
+                    showNotification('Error', result.error || 'Failed to discover devices', 'error');
+                }
+            } catch (error) {
+                notification.remove();
+                showNotification('Error', 'Failed to scan for devices: ' + error.message, 'error');
+            }
+        }
+        
+        function showDiscoveryModal(devices) {
+            // Build device list HTML with "Add" buttons
+            let deviceHTML = `
+                <div style="background: var(--card-bg); padding: 15px; border-radius: 8px; max-height: 400px; overflow-y: auto;">
+                    <h4 style="margin: 0 0 10px 0; color: var(--text-primary);">Discovered Devices (${devices.length})</h4>
+                    <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 15px;">
+                        Select a device to add it to your wind tunnel controller.
+                    </p>
+            `;
+            
+            devices.forEach((device, index) => {
+                const lastSeenText = device.last_seen < 1 ? 'Just now' : `${device.last_seen.toFixed(1)}s ago`;
+                
+                deviceHTML += `
+                    <div style="background: var(--bg-color); padding: 12px; border-radius: 6px; margin-bottom: 10px; border-left: 4px solid var(--success-color);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <strong style="font-family: monospace; color: var(--primary-color); font-size: 1.1rem;">${device.sensor_id}</strong>
+                            <button onclick="addNetworkDevice('${device.ip}', '${device.sensor_id}', '${device.sensor_type}')" 
+                                    style="background: var(--success-color); color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                                + Add
+                            </button>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.9rem; color: var(--text-secondary);">
+                            <div><strong>Type:</strong> ${device.sensor_type}</div>
+                            <div><strong>IP:</strong> ${device.ip}</div>
+                            <div><strong>MAC:</strong> ${device.mac}</div>
+                            <div><strong>Firmware:</strong> ${device.firmware}</div>
+                            <div style="grid-column: span 2;"><strong>Last Seen:</strong> ${lastSeenText}</div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            deviceHTML += `</div>`;
+            
+            // Show in a modal
+            const modal = document.createElement('div');
+            modal.id = 'discoveryModal';
+            modal.className = 'notification';
+            modal.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 700px; width: 90%; z-index: 10000; background: var(--card-bg); padding: 20px; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.3);';
+            modal.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h3 style="margin: 0; color: var(--text-primary);">Network Sensor Discovery</h3>
+                    <button onclick="document.getElementById('discoveryModal').remove();" style="background: none; border: none; color: var(--text-secondary); font-size: 1.5rem; cursor: pointer; padding: 0; width: 30px; height: 30px;">&times;</button>
+                </div>
+                ${deviceHTML}
+                <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-color); text-align: center;">
+                    <button onclick="scanNetworkSensors(); document.getElementById('discoveryModal').remove();" 
+                            style="background: var(--primary-color); color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;">
+                        &#8635; Rescan
+                    </button>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+        
+        async function addNetworkDevice(ip, sensorId, sensorType) {
+            // Show configuration dialog
+            const port = prompt(`Enter UDP port for this sensor (default: 5000):`, '5000');
+            if (!port) return;
+            
+            const rate = prompt(`Enter sensor rate in milliseconds (default: 1000 = 1 reading/second):`, '1000');
+            if (!rate) return;
+            
+            const newSensorId = prompt(`Sensor ID (leave as-is or rename):`, sensorId);
+            if (!newSensorId) return;
+            
+            const notification = showNotification('Configuring Device', `Setting up ${sensorId}...`, 'warning', true);
+            
+            try {
+                // Step 1: Configure the ESP32
+                const configResponse = await fetch('/api/udp/configure-device', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        device_ip: ip,
+                        target_port: parseInt(port),
+                        sensor_rate: parseInt(rate),
+                        sensor_id: newSensorId !== sensorId ? newSensorId : null
+                    })
+                });
+                
+                const configResult = await configResponse.json();
+                
+                if (configResult.status !== 'success') {
+                    notification.remove();
+                    showNotification('Configuration Failed', configResult.error || 'Failed to configure ESP32', 'error');
+                    return;
+                }
+                
+                // Step 2: Tell ESP32 to start sending data
+                const startResponse = await fetch('/api/udp/start-device', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ device_ip: ip })
+                });
+                
+                const startResult = await startResponse.json();
+                
+                if (startResult.status !== 'success') {
+                    notification.remove();
+                    showNotification('Start Failed', startResult.error || 'Failed to start ESP32', 'error');
+                    return;
+                }
+                
+                // Step 3: Add sensor to wind tunnel controller
+                const finalSensorId = newSensorId !== sensorId ? newSensorId : sensorId;
+                const sensorData = {
+                    id: finalSensorId,
+                    name: `${sensorType} (${finalSensorId})`,
+                    type: 'udp_network',
+                    enabled: true,
+                    config: {
+                        udp_port: parseInt(port),
+                        sensor_id: finalSensorId,
+                        timeout: 5
+                    }
+                };
+                
+                const addResponse = await fetch('/api/sensors', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(sensorData)
+                });
+                
+                const addResult = await addResponse.json();
+                notification.remove();
+                
+                if (addResult.status === 'success') {
+                    showNotification('Success!', `${finalSensorId} added and started! Check the dashboard for data.`, 'success');
+                    document.getElementById('discoveryModal').remove();
+                    await loadSensors();
+                } else {
+                    showNotification('Error Adding Sensor', addResult.error || 'Failed to add sensor', 'error');
+                }
+                
+            } catch (error) {
+                notification.remove();
+                showNotification('Error', 'Failed to add network sensor: ' + error.message, 'error');
+            }
+        }
+
         // UDP Device Discovery
         async function showUDPDevices() {
             const notification = showNotification('Scanning Network', 'Checking for UDP devices...', 'warning', true);
@@ -2285,6 +2726,24 @@
                     console.error('Update error:', error);
                 });
             });
+        }
+
+        function copyESP32Code() {
+            const codeTextarea = document.getElementById('esp32Code');
+            codeTextarea.select();
+            codeTextarea.setSelectionRange(0, 99999); // For mobile devices
+            
+            try {
+                document.execCommand('copy');
+                showNotification('Code Copied!', 'ESP32 code copied to clipboard. Paste it into Arduino IDE.', 'success');
+            } catch (err) {
+                // Fallback for modern browsers
+                navigator.clipboard.writeText(codeTextarea.value).then(() => {
+                    showNotification('Code Copied!', 'ESP32 code copied to clipboard. Paste it into Arduino IDE.', 'success');
+                }).catch(() => {
+                    showNotification('Copy Failed', 'Please manually select and copy the code.', 'error');
+                });
+            }
         }
 
         // Load saved settings on page load

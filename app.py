@@ -375,8 +375,14 @@ sensor_instances = {}  # Cache initialized sensors {sensor_id: instance}
 sensor_last_values = {}  # Cache last reading from each sensor {sensor_id: value}
 
 # UDP sensor data storage
-udp_sensor_data = {}  # {sensor_id: {'value': float, 'timestamp': float, 'port': int}}
-udp_listeners = {}  # {port: socket} - Track active UDP listeners
+udp_sensor_data = {}  # {sensor_id: {'value': float, 'timestamp': float, 'port': int, 'source_ip': str}}
+udp_listeners = {}  # {port: thread} - Track active UDP data listener threads
+
+# UDP discovery system
+UDP_DISCOVERY_PORT = 5555  # Dedicated port for ESP32 announcements
+discovered_devices = {}  # {device_id: {'sensor_id', 'ip', 'mac', 'sensor_type', 'firmware', 'last_seen'}}
+discovery_listener_thread = None
+discovery_lock = Lock()
 
 # Fan control state
 fan_state = {
@@ -1351,6 +1357,153 @@ def udp_listener_thread(port):
         print(f"UDP listener stopped on port {port}")
         if port in udp_listeners:
             del udp_listeners[port]
+
+
+def udp_discovery_listener():
+    """
+    Background thread that listens for UDP announcement packets from ESP32 devices.
+    Runs on port 5555 and stores discovered device information.
+    """
+    global discovered_devices
+    
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.settimeout(1.0)  # 1 second timeout
+    
+    try:
+        sock.bind(('0.0.0.0', UDP_DISCOVERY_PORT))
+        logger.info(f"UDP discovery listener started on port {UDP_DISCOVERY_PORT}")
+        
+        while True:
+            try:
+                data, addr = sock.recvfrom(1024)
+                
+                try:
+                    packet = json.loads(data.decode('utf-8'))
+                    
+                    # Check if this is an announcement packet
+                    if packet.get('type') == 'announcement':
+                        sensor_id = packet.get('sensor_id')
+                        if not sensor_id:
+                            continue
+                            
+                        # Store discovered device info
+                        with discovery_lock:
+                            device_id = f"{sensor_id}_{addr[0]}"  # Unique key
+                            discovered_devices[device_id] = {
+                                'sensor_id': sensor_id,
+                                'ip': packet.get('ip', addr[0]),
+                                'mac': packet.get('mac', 'unknown'),
+                                'sensor_type': packet.get('sensor_type', 'unknown'),
+                                'firmware': packet.get('firmware', 'unknown'),
+                                'last_seen': time.time()
+                            }
+                            logger.debug(f"Discovered device: {sensor_id} at {addr[0]}")
+                            
+                except json.JSONDecodeError:
+                    # Not a valid JSON packet, ignore
+                    pass
+                except Exception as e:
+                    logger.error(f"Error processing discovery packet: {e}")
+                    
+            except socket.timeout:
+                # Clean up stale devices (not seen in 60 seconds)
+                with discovery_lock:
+                    current_time = time.time()
+                    stale_devices = [
+                        dev_id for dev_id, dev in discovered_devices.items()
+                        if current_time - dev['last_seen'] > 60
+                    ]
+                    for dev_id in stale_devices:
+                        del discovered_devices[dev_id]
+                continue
+                
+            except Exception as e:
+                logger.error(f"Error in discovery listener: {e}")
+                
+    except Exception as e:
+        logger.error(f"Failed to start UDP discovery listener: {e}")
+    finally:
+        sock.close()
+        logger.info("UDP discovery listener stopped")
+
+
+def send_esp32_command(ip, endpoint, data=None, timeout=5):
+    """
+    Send HTTP command to ESP32 device.
+    
+    Args:
+        ip: ESP32 IP address
+        endpoint: API endpoint (e.g., '/config', '/start')
+        data: Dictionary to send as JSON body (optional)
+        timeout: Request timeout in seconds
+        
+    Returns:
+        dict: Response JSON or error dict
+    """
+    try:
+        import requests
+        
+        url = f"http://{ip}{endpoint}"
+        
+        if data is not None:
+            response = requests.post(url, json=data, timeout=timeout)
+        else:
+            response = requests.get(url, timeout=timeout)
+            
+        response.raise_for_status()
+        return response.json()
+        
+    except requests.exceptions.Timeout:
+        return {'status': 'error', 'error': f'Request timeout after {timeout}s'}
+    except requests.exceptions.ConnectionError:
+        return {'status': 'error', 'error': f'Cannot connect to device at {ip}'}
+    except requests.exceptions.HTTPError as e:
+        return {'status': 'error', 'error': f'HTTP error: {e}'}
+    except Exception as e:
+        return {'status': 'error', 'error': str(e)}
+
+
+def configure_esp32_sensor(ip, target_ip, target_port, sensor_rate=1000, sensor_id=None):
+    """
+    Configure ESP32 sensor to send data to this Raspberry Pi.
+    
+    Args:
+        ip: ESP32 IP address
+        target_ip: Raspberry Pi IP to send data to
+        target_port: UDP port to send data to
+        sensor_rate: Milliseconds between readings (default 1000 = 1 second)
+        sensor_id: Optional new sensor ID to assign
+        
+    Returns:
+        dict: Response from ESP32
+    """
+    config_data = {
+        'target_ip': target_ip,
+        'target_port': target_port,
+        'sensor_rate': sensor_rate
+    }
+    
+    if sensor_id:
+        config_data['sensor_id'] = sensor_id
+        
+    return send_esp32_command(ip, '/config', config_data)
+
+
+def start_esp32_sensor(ip):
+    """Tell ESP32 to start sending data."""
+    return send_esp32_command(ip, '/start', {})
+
+
+def stop_esp32_sensor(ip):
+    """Tell ESP32 to stop sending data."""
+    return send_esp32_command(ip, '/stop', {})
+
+
+def get_esp32_status(ip):
+    """Get current status/configuration from ESP32."""
+    return send_esp32_command(ip, '/status')
+
 
 def init_udp_sensor(config):
     """Initialize UDP network sensor"""
@@ -2848,7 +3001,152 @@ def test_sensor():
             'message': f'Test failed: {str(e)}'
         }), 500
 
+@app.route('/api/udp/discover', methods=['GET'])
+def discover_udp_devices():
+    """Get list of discovered ESP32 devices broadcasting announcements."""
+    try:
+        with discovery_lock:
+            current_time = time.time()
+            devices = []
+            
+            for dev_id, dev in discovered_devices.items():
+                age = current_time - dev['last_seen']
+                devices.append({
+                    'device_id': dev_id,
+                    'sensor_id': dev['sensor_id'],
+                    'ip': dev['ip'],
+                    'mac': dev['mac'],
+                    'sensor_type': dev['sensor_type'],
+                    'firmware': dev['firmware'],
+                    'last_seen': age,
+                    'is_stale': age > 10  # Mark as stale if not seen in 10s
+                })
+            
+            # Sort by most recently seen
+            devices.sort(key=lambda x: x['last_seen'])
+            
+            return jsonify({
+                'status': 'success',
+                'devices': devices,
+                'count': len(devices)
+            })
+            
+    except Exception as e:
+        logger.error(f"Error in discover_udp_devices: {e}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/udp/configure-device', methods=['POST'])
+def configure_udp_device():
+    """Send configuration to ESP32 device via HTTP."""
+    try:
+        data = request.json
+        device_ip = data.get('device_ip')
+        target_port = data.get('target_port', 5000)
+        sensor_rate = data.get('sensor_rate', 1000)
+        new_sensor_id = data.get('sensor_id')  # Optional rename
+        
+        if not device_ip:
+            return jsonify({'status': 'error', 'error': 'device_ip is required'}), 400
+        
+        # Get Raspberry Pi's local IP (best effort)
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(('8.8.8.8', 80))
+            raspberry_ip = s.getsockname()[0]
+        except:
+            raspberry_ip = '0.0.0.0'
+        finally:
+            s.close()
+        
+        # Configure the ESP32
+        result = configure_esp32_sensor(
+            device_ip,
+            raspberry_ip,
+            target_port,
+            sensor_rate,
+            new_sensor_id
+        )
+        
+        if result.get('status') == 'success':
+            return jsonify(result)
+        else:
+            return jsonify(result), 500
+            
+    except Exception as e:
+        logger.error(f"Error configuring UDP device: {e}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/udp/start-device', methods=['POST'])
+def start_udp_device():
+    """Tell ESP32 device to start sending data."""
+    try:
+        data = request.json
+        device_ip = data.get('device_ip')
+        
+        if not device_ip:
+            return jsonify({'status': 'error', 'error': 'device_ip is required'}), 400
+        
+        result = start_esp32_sensor(device_ip)
+        
+        if result.get('status') == 'success':
+            return jsonify(result)
+        else:
+            return jsonify(result), 500
+            
+    except Exception as e:
+        logger.error(f"Error starting UDP device: {e}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/udp/stop-device', methods=['POST'])
+def stop_udp_device():
+    """Tell ESP32 device to stop sending data."""
+    try:
+        data = request.json
+        device_ip = data.get('device_ip')
+        
+        if not device_ip:
+            return jsonify({'status': 'error', 'error': 'device_ip is required'}), 400
+        
+        result = stop_esp32_sensor(device_ip)
+        
+        if result.get('status') == 'success':
+            return jsonify(result)
+        else:
+            return jsonify(result), 500
+            
+    except Exception as e:
+        logger.error(f"Error stopping UDP device: {e}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/udp/device-status', methods=['POST'])
+def get_udp_device_status():
+    """Get status from ESP32 device via HTTP."""
+    try:
+        data = request.json
+        device_ip = data.get('device_ip')
+        
+        if not device_ip:
+            return jsonify({'status': 'error', 'error': 'device_ip is required'}), 400
+        
+        result = get_esp32_status(device_ip)
+        
+        if result.get('status') == 'success':
+            return jsonify(result)
+        else:
+            return jsonify(result), 500
+            
+    except Exception as e:
+        logger.error(f"Error getting device status: {e}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
 @app.route('/api/sensor-status/<sensor_id>', methods=['GET'])
+
 def get_sensor_status(sensor_id):
     """Get current status of a sensor (connected/disconnected based on whether it's running and has data)."""
     try:
@@ -3507,6 +3805,11 @@ if __name__ == '__main__':
     safety_thread = threading.Thread(target=check_fan_safety, daemon=True)
     safety_thread.start()
     print("Fan safety monitoring started")
+    
+    # Start UDP discovery listener thread
+    discovery_listener_thread = threading.Thread(target=udp_discovery_listener, daemon=True)
+    discovery_listener_thread.start()
+    logger.info("UDP discovery listener started")
     
     # Run on all interfaces for Raspberry Pi access
     # Use port 80 (standard HTTP port), disable debug in production
