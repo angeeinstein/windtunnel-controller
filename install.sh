@@ -378,10 +378,12 @@ EOF
 SUBSYSTEM=="gpio", KERNEL=="gpiochip*", MODE="0666"
 UDEVRULE
     
-    # Reload udev rules and apply permissions immediately
-    udevadm control --reload-rules
-    udevadm trigger --subsystem-match=gpio
-    sleep 0.5
+    # Reload udev rules and apply permissions immediately (skip if udevadm not available)
+    if command_exists udevadm; then
+        udevadm control --reload-rules 2>/dev/null || true
+        udevadm trigger --subsystem-match=gpio 2>/dev/null || true
+        sleep 0.5
+    fi
     
     # Set permissions directly as backup
     chmod 666 /dev/gpiochip* 2>/dev/null || true
@@ -429,10 +431,12 @@ EOF
 SUBSYSTEM=="gpio", KERNEL=="gpiochip*", MODE="0666"
 UDEVRULE
     
-    # Reload udev rules and apply permissions immediately
-    udevadm control --reload-rules
-    udevadm trigger --subsystem-match=gpio
-    sleep 0.5
+    # Reload udev rules and apply permissions immediately (skip if udevadm not available)
+    if command_exists udevadm; then
+        udevadm control --reload-rules 2>/dev/null || true
+        udevadm trigger --subsystem-match=gpio 2>/dev/null || true
+        sleep 0.5
+    fi
     
     # Set permissions directly as backup
     chmod 666 /dev/gpiochip* 2>/dev/null || true
