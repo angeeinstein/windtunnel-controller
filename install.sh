@@ -687,7 +687,8 @@ main() {
             
             install_sensor_libraries
             configure_sudo_permissions
-            create_service
+            update_service_file
+            systemctl daemon-reload
             enable_service
             show_completion_info
         else
