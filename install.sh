@@ -357,7 +357,6 @@ After=network.target
 [Service]
 Type=simple
 User=root
-SupplementaryGroups=dialout gpio
 WorkingDirectory=$INSTALL_DIR
 Environment="PATH=$VENV_DIR/bin"
 ExecStart=$VENV_DIR/bin/gunicorn --worker-class gthread --workers 1 --threads 4 --bind 0.0.0.0:80 app:app
@@ -409,7 +408,6 @@ After=network.target
 [Service]
 Type=simple
 User=root
-SupplementaryGroups=dialout gpio
 WorkingDirectory=$INSTALL_DIR
 Environment="PATH=$VENV_DIR/bin"
 ExecStart=$VENV_DIR/bin/gunicorn --worker-class gthread --workers 1 --threads 4 --bind 0.0.0.0:80 app:app

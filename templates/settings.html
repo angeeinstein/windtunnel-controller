@@ -1008,15 +1008,15 @@ float readSensor() {
                 </button>
             </div>
             
-            <div style="margin-top: 15px; padding: 15px; background: var(--warning-color); color: white; border-radius: 8px;">
-                <strong>&#9888; Setup Instructions:</strong>
-                <ol style="margin: 10px 0 0 20px; line-height: 1.8;">
-                    <li>Install required libraries in Arduino IDE: <code style="background: rgba(0,0,0,0.2); padding: 2px 6px; border-radius: 3px;">WiFi</code>, <code style="background: rgba(0,0,0,0.2); padding: 2px 6px; border-radius: 3px;">AsyncTCP</code>, <code style="background: rgba(0,0,0,0.2); padding: 2px 6px; border-radius: 3px;">ESPAsyncWebServer</code></li>
+            <div style="margin-top: 15px; padding: 15px; background: var(--warning-color); border-radius: 8px;">
+                <strong style="color: #1a1a1a; font-size: 1.1rem;">&#9888; Setup Instructions:</strong>
+                <ol style="margin: 10px 0 0 20px; line-height: 1.8; color: #1a1a1a;">
+                    <li>Install required libraries in Arduino IDE: <code style="background: rgba(0,0,0,0.3); color: white; padding: 2px 6px; border-radius: 3px; font-weight: 600;">WiFi</code>, <code style="background: rgba(0,0,0,0.3); color: white; padding: 2px 6px; border-radius: 3px; font-weight: 600;">AsyncTCP</code>, <code style="background: rgba(0,0,0,0.3); color: white; padding: 2px 6px; border-radius: 3px; font-weight: 600;">ESPAsyncWebServer</code></li>
                     <li>Change WiFi credentials in the code (lines 11-12)</li>
-                    <li>Customize <code style="background: rgba(0,0,0,0.2); padding: 2px 6px; border-radius: 3px;">sensorID</code> and <code style="background: rgba(0,0,0,0.2); padding: 2px 6px; border-radius: 3px;">sensorType</code> (lines 15-16)</li>
-                    <li>Implement your sensor reading logic in <code style="background: rgba(0,0,0,0.2); padding: 2px 6px; border-radius: 3px;">readSensor()</code> function (bottom of code)</li>
+                    <li>Customize <code style="background: rgba(0,0,0,0.3); color: white; padding: 2px 6px; border-radius: 3px; font-weight: 600;">sensorID</code> and <code style="background: rgba(0,0,0,0.3); color: white; padding: 2px 6px; border-radius: 3px; font-weight: 600;">sensorType</code> (lines 15-16)</li>
+                    <li>Implement your sensor reading logic in <code style="background: rgba(0,0,0,0.3); color: white; padding: 2px 6px; border-radius: 3px; font-weight: 600;">readSensor()</code> function (bottom of code)</li>
                     <li>Upload to ESP32 and power on</li>
-                    <li>Click <strong>"Scan & Add Network Sensor"</strong> button above to discover and configure</li>
+                    <li>Click <strong style="color: #1a1a1a;">"Scan & Add Network Sensor"</strong> button above to discover and configure</li>
                 </ol>
             </div>
         </div>
@@ -1434,15 +1434,37 @@ float readSensor() {
                             </span>
                             <small style="color: var(--text-secondary);">${type.name}</small>
                         </div>
-                        ${isConfigured ? `<p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 8px;">Sensor ID: <strong style="font-family: monospace; color: var(--primary-color);">${sensor.config.sensor_id}</strong></p>` : ''}
-                        <button class="configure-hardware-btn" onclick="openHardwareConfig(${index}); event.preventDefault();" style="margin-bottom: 8px;">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <circle cx="12" cy="12" r="3"></circle>
-                                <path d="M12 1v6m0 6v6m8.66-13.66l-4.24 4.24m-4.84 4.84l-4.24 4.24M23 12h-6m-6 0H1m20.66 8.66l-4.24-4.24m-4.84-4.84l-4.24-4.24"></path>
-                            </svg>
-                            Configure UDP Settings
-                        </button>
-                        <button class="configure-hardware-btn" onclick="scanNetworkSensors(); event.preventDefault();" style="background: var(--success-color);">
+                        ${isConfigured ? `
+                            <div style="background: var(--bg-color); padding: 10px; border-radius: 6px; margin-bottom: 10px;">
+                                <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 5px;">
+                                    <strong>Sensor ID:</strong> <span style="font-family: monospace; color: var(--primary-color);">${sensor.config.sensor_id}</span>
+                                </p>
+                                <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 5px;">
+                                    <strong>Port:</strong> ${sensor.config.udp_port} | <strong>Timeout:</strong> ${sensor.config.timeout}s
+                                </p>
+                            </div>
+                        ` : ''}
+                        
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+                            <button class="configure-hardware-btn" onclick="openHardwareConfig(${index}); event.preventDefault();" style="margin: 0;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                    <path d="M12 1v6m0 6v6m8.66-13.66l-4.24 4.24m-4.84 4.84l-4.24 4.24M23 12h-6m-6 0H1m20.66 8.66l-4.24-4.24m-4.84-4.84l-4.24-4.24"></path>
+                                </svg>
+                                Local Config
+                            </button>
+                            ${isConfigured ? `
+                                <button class="configure-hardware-btn" onclick="manageESP32('${sensor.id}'); event.preventDefault();" style="margin: 0; background: var(--accent-color);">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+                                        <line x1="7" y1="2" x2="7" y2="22"></line>
+                                    </svg>
+                                    ESP32 Control
+                                </button>
+                            ` : ''}
+                        </div>
+                        
+                        <button class="configure-hardware-btn" onclick="scanNetworkSensors(); event.preventDefault();" style="background: var(--success-color); margin-bottom: 8px;">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <circle cx="12" cy="12" r="10"></circle>
                                 <line x1="22" y1="12" x2="18" y2="12"></line>
@@ -2521,6 +2543,144 @@ float readSensor() {
             } catch (error) {
                 notification.remove();
                 showNotification('Error', 'Failed to add network sensor: ' + error.message, 'error');
+            }
+        }
+
+        // ESP32 Device Management
+        async function manageESP32(sensorId) {
+            // Find sensor to get IP from discovered devices
+            const sensor = sensors.find(s => s.id === sensorId);
+            if (!sensor || !sensor.config || !sensor.config.sensor_id) {
+                showNotification('Error', 'Sensor configuration not found', 'error');
+                return;
+            }
+            
+            const modal = document.createElement('div');
+            modal.id = 'esp32ManageModal';
+            modal.className = 'notification';
+            modal.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 600px; width: 90%; z-index: 10000; background: var(--card-bg); padding: 20px; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.3);';
+            
+            modal.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h3 style="margin: 0; color: var(--text-primary);">ESP32 Control: ${sensor.config.sensor_id}</h3>
+                    <button onclick="document.getElementById('esp32ManageModal').remove();" style="background: none; border: none; color: var(--text-secondary); font-size: 1.5rem; cursor: pointer; padding: 0; width: 30px; height: 30px;">&times;</button>
+                </div>
+                
+                <div style="background: var(--bg-color); padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                    <h4 style="margin: 0 0 10px 0; color: var(--text-primary);">Device Configuration</h4>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">ESP32 IP Address:</label>
+                        <input type="text" id="esp32IP" placeholder="192.168.1.100" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--card-bg); color: var(--text-primary);">
+                        <small style="color: var(--text-secondary);">Enter the IP address of your ESP32 device</small>
+                    </div>
+                    
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Sensor Rate (ms):</label>
+                        <input type="number" id="esp32Rate" value="1000" min="100" max="60000" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--card-bg); color: var(--text-primary);">
+                        <small style="color: var(--text-secondary);">Milliseconds between readings (1000 = 1 second)</small>
+                    </div>
+                    
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">New Sensor ID (optional):</label>
+                        <input type="text" id="esp32NewID" placeholder="${sensor.config.sensor_id}" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--card-bg); color: var(--text-primary);">
+                        <small style="color: var(--text-secondary);">Leave empty to keep current ID</small>
+                    </div>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+                    <button onclick="sendESP32Command('status', '${sensorId}')" style="background: var(--primary-color); color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: bold;">
+                        Get Status
+                    </button>
+                    <button onclick="sendESP32Command('configure', '${sensorId}')" style="background: var(--warning-color); color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: bold;">
+                        Configure
+                    </button>
+                    <button onclick="sendESP32Command('start', '${sensorId}')" style="background: var(--success-color); color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: bold;">
+                        Start
+                    </button>
+                </div>
+                
+                <button onclick="sendESP32Command('stop', '${sensorId}')" style="width: 100%; background: var(--error-color); color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: bold;">
+                    Stop Data Transmission
+                </button>
+            `;
+            
+            document.body.appendChild(modal);
+        }
+        
+        async function sendESP32Command(command, sensorId) {
+            const ip = document.getElementById('esp32IP')?.value;
+            
+            if (!ip || !ip.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/)) {
+                showNotification('Error', 'Please enter a valid IP address', 'error');
+                return;
+            }
+            
+            const sensor = sensors.find(s => s.id === sensorId);
+            const notification = showNotification('Sending Command', `Contacting ESP32 at ${ip}...`, 'warning', true);
+            
+            try {
+                let endpoint, body;
+                
+                switch (command) {
+                    case 'status':
+                        endpoint = '/api/udp/device-status';
+                        body = { device_ip: ip };
+                        break;
+                        
+                    case 'configure':
+                        const rate = parseInt(document.getElementById('esp32Rate').value);
+                        const newId = document.getElementById('esp32NewID').value.trim();
+                        
+                        endpoint = '/api/udp/configure-device';
+                        body = {
+                            device_ip: ip,
+                            target_port: sensor.config.udp_port,
+                            sensor_rate: rate,
+                            sensor_id: newId || null
+                        };
+                        break;
+                        
+                    case 'start':
+                        endpoint = '/api/udp/start-device';
+                        body = { device_ip: ip };
+                        break;
+                        
+                    case 'stop':
+                        endpoint = '/api/udp/stop-device';
+                        body = { device_ip: ip };
+                        break;
+                }
+                
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                
+                const result = await response.json();
+                notification.remove();
+                
+                if (result.status === 'success') {
+                    let message = result.message || 'Command executed successfully';
+                    
+                    // Show detailed status info
+                    if (command === 'status' && result.sensor_id) {
+                        message = `Device Status:\nSensor ID: ${result.sensor_id}\nFirmware: ${result.firmware}\nSending Data: ${result.sending_data ? 'Yes' : 'No'}\nRate: ${result.sensor_rate}ms`;
+                    }
+                    
+                    showNotification('Success', message, 'success');
+                    
+                    // Close modal if stop command
+                    if (command === 'stop') {
+                        document.getElementById('esp32ManageModal')?.remove();
+                    }
+                } else {
+                    showNotification('Command Failed', result.error || 'ESP32 did not respond correctly', 'error');
+                }
+                
+            } catch (error) {
+                notification.remove();
+                showNotification('Error', `Failed to contact ESP32: ${error.message}`, 'error');
             }
         }
 
