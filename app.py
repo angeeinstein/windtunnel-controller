@@ -3958,12 +3958,12 @@ def handle_data_request():
     """Handle explicit data requests from clients."""
     emit('data_update', generate_mock_data())
 
-if __name__ == '__main__':
-    # Initialize database on startup
-    init_database()
+# Initialize background threads when module is loaded (for Gunicorn)
+def init_background_threads():
+    """Initialize background threads. Called once when app starts."""
+    import threading
     
     # Start fan safety monitoring thread
-    import threading
     safety_thread = threading.Thread(target=check_fan_safety, daemon=True)
     safety_thread.start()
     print("Fan safety monitoring started")
@@ -3971,7 +3971,16 @@ if __name__ == '__main__':
     # Start UDP discovery listener thread
     discovery_listener_thread = threading.Thread(target=udp_discovery_listener, daemon=True)
     discovery_listener_thread.start()
-    logger.info("UDP discovery listener started")
+    print("UDP discovery listener thread started")
+    logger.info("UDP discovery listener thread started")
+
+# Initialize database and start background threads
+init_database()
+init_background_threads()
+
+if __name__ == '__main__':
+    # Threads are already started by init_background_threads() above
+    # This block only runs for direct Python execution (not Gunicorn)
     
     # Run on all interfaces for Raspberry Pi access
     # Use port 80 (standard HTTP port), disable debug in production
