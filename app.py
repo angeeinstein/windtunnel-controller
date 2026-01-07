@@ -3959,24 +3959,45 @@ def handle_data_request():
     emit('data_update', generate_mock_data())
 
 # Initialize background threads when module is loaded (for Gunicorn)
+_threads_started = False
+
 def init_background_threads():
-    """Initialize background threads. Called once when app starts."""
+    """Initialize background threads. Called once per worker."""
+    global _threads_started
+    
+    if _threads_started:
+        return  # Already started in this process
+    
     import threading
     
     # Start fan safety monitoring thread
     safety_thread = threading.Thread(target=check_fan_safety, daemon=True)
     safety_thread.start()
-    print("Fan safety monitoring started")
+    print("✓ Fan safety monitoring started")
     
     # Start UDP discovery listener thread
     discovery_listener_thread = threading.Thread(target=udp_discovery_listener, daemon=True)
     discovery_listener_thread.start()
-    print("UDP discovery listener thread started")
+    print("✓ UDP discovery listener thread started")
     logger.info("UDP discovery listener thread started")
+    
+    _threads_started = True
 
-# Initialize database and start background threads
+# Gunicorn server hook - called after worker processes are forked
+def post_fork(server, worker):
+    """Gunicorn post_fork hook - initialize threads in worker process."""
+    print(f"Worker {worker.pid} started - initializing background threads...")
+    init_background_threads()
+
+# Initialize database
 init_database()
-init_background_threads()
+
+# Try to start threads (will work for direct execution, not Gunicorn workers)
+# Gunicorn workers will use post_fork hook instead
+try:
+    init_background_threads()
+except Exception as e:
+    print(f"Note: Background threads not started at module load (expected for Gunicorn): {e}")
 
 if __name__ == '__main__':
     # Threads are already started by init_background_threads() above
