@@ -3986,7 +3986,7 @@ def init_background_threads():
 # Gunicorn server hook - called after worker processes are forked
 def post_fork(server, worker):
     """Gunicorn post_fork hook - initialize threads in worker process."""
-    print(f"Worker {worker.pid} started - initializing background threads...")
+    logger.info(f"✓ Gunicorn post_fork: Worker {worker.pid} started - initializing background threads...")
     init_background_threads()
 
 # Initialize database
