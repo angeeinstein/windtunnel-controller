@@ -1429,10 +1429,12 @@ def udp_discovery_listener():
     try:
         sock.bind(('0.0.0.0', UDP_DISCOVERY_PORT))
         logger.info(f"UDP discovery listener started on port {UDP_DISCOVERY_PORT}")
+        print(f"UDP discovery listener is active on port {UDP_DISCOVERY_PORT}")
         
         while True:
             try:
                 data, addr = sock.recvfrom(1024)
+                logger.info(f"Received UDP packet from {addr[0]}: {data[:100]}")  # Log first 100 chars
                 
                 try:
                     packet = json.loads(data.decode('utf-8'))
@@ -1441,6 +1443,7 @@ def udp_discovery_listener():
                     if packet.get('type') == 'announcement':
                         sensor_id = packet.get('sensor_id')
                         if not sensor_id:
+                            logger.warning(f"Announcement packet missing sensor_id from {addr[0]}")
                             continue
                             
                         # Store discovered device info
@@ -1456,13 +1459,16 @@ def udp_discovery_listener():
                                 'sensor_keys': packet.get('sensor_keys', ['value']),
                                 'last_seen': time.time()
                             }
-                            logger.debug(f"Discovered device: {sensor_id} at {addr[0]}")
+                            logger.info(f"✓ Discovered device: {sensor_id} at {addr[0]} (multi_value={packet.get('multi_value')})")
+                            print(f"✓ ESP32 discovered: {sensor_id} at {addr[0]}")
+                    else:
+                        logger.debug(f"Received non-announcement packet from {addr[0]}: {packet.get('type')}")
                             
-                except json.JSONDecodeError:
-                    # Not a valid JSON packet, ignore
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Invalid JSON from {addr[0]}: {e}")
                     pass
                 except Exception as e:
-                    logger.error(f"Error processing discovery packet: {e}")
+                    logger.error(f"Error processing discovery packet from {addr[0]}: {e}")
                     
             except socket.timeout:
                 # Clean up stale devices (not seen in 60 seconds)
@@ -3076,12 +3082,16 @@ def discover_udp_devices():
                     'mac': dev['mac'],
                     'sensor_type': dev['sensor_type'],
                     'firmware': dev['firmware'],
+                    'multi_value': dev.get('multi_value', False),
+                    'sensor_keys': dev.get('sensor_keys', ['value']),
                     'last_seen': age,
                     'is_stale': age > 10  # Mark as stale if not seen in 10s
                 })
             
             # Sort by most recently seen
             devices.sort(key=lambda x: x['last_seen'])
+            
+            logger.info(f"Discovery API called - found {len(devices)} devices")
             
             return jsonify({
                 'status': 'success',
