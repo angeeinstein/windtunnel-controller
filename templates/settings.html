@@ -742,7 +742,7 @@
                     <div class="setting-description">Discover and add ESP32 network sensors automatically</div>
                 </div>
                 <div class="setting-control">
-                    <button class="save-btn" onclick="openSetupWizard()" style="margin: 0; padding: 12px 30px; font-size: 1.1rem; background: var(--success-color);">🔍 Setup Wizard</button>
+                    <button class="save-btn" onclick="openSetupWizard()" style="margin: 0; padding: 12px 30px; font-size: 1.1rem; background: var(--success-color);">&#128269; Setup Wizard</button>
                 </div>
             </div>
 
@@ -989,6 +989,8 @@ void sendAnnouncement() {
   json += "\\"sensor_id\\":\\"" + sensorID + "\\",";
   json += "\\"ip\\":\\"" + WiFi.localIP().toString() + "\\",";
   json += "\\"mac\\":\\"" + WiFi.macAddress() + "\\",";
+  json += "\\"sensor_type\\":\\"" + sensorType + "\\",";
+  json += "\\"firmware\\":\\"" + String(firmwareVersion) + "\\",";
   
   // Announce sensor capabilities (for setup wizard)
   if (MULTI_VALUE_MODE) {
@@ -999,8 +1001,6 @@ void sendAnnouncement() {
     json += "\\"sensor_keys\\":[\\"value\\"]";
   }
   
-  json += "\\"multi_value\\":false,";  // Set to true if using sendMultiSensorData
-  json += "\\"sensor_keys\\":[\\"value\\"]";  // Or ["lift","drag","temp"] for multi-value
   json += "}";
   
   udpDiscovery.beginPacket("255.255.255.255", discoveryPort);
@@ -1385,11 +1385,16 @@ float readTemperatureSensor() {
                             <label>Sensor Type</label>
                             <select onchange="updateSensor(${index}, 'type', this.value); renderSensorList();">
                                 ${Object.keys(sensorTypes).map(type => {
+                                    // Hide UDP network from manual creation - use Setup Wizard instead
+                                    if (type === 'udp_network' && sensor.type !== 'udp_network') {
+                                        return '';
+                                    }
                                     const typeInfo = sensorTypes[type];
                                     const isAvailable = typeInfo.available !== false;
                                     const isSelected = sensor.type === type;
                                     const unavailableLabel = !isAvailable ? ' ⚠️ (library not installed)' : '';
-                                    return `<option value="${type}" ${isSelected ? 'selected' : ''} ${!isAvailable && !isSelected ? 'disabled' : ''}>${typeInfo.name}${unavailableLabel}</option>`;
+                                    const wizardNote = type === 'udp_network' ? ' (via Setup Wizard)' : '';
+                                    return `<option value="${type}" ${isSelected ? 'selected' : ''} ${!isAvailable && !isSelected ? 'disabled' : ''}>${typeInfo.name}${unavailableLabel}${wizardNote}</option>`;
                                 }).join('')}
                             </select>
                         </div>
@@ -2879,7 +2884,7 @@ float readTemperatureSensor() {
                 if (devices.length === 0) {
                     container.innerHTML = `
                         <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
-                            <p style="font-size: 1.2rem; margin-bottom: 15px;">📡 No devices found</p>
+                            <p style="font-size: 1.2rem; margin-bottom: 15px;">&#128225; No devices found</p>
                             <p>Make sure your ESP32 is:</p>
                             <ul style="text-align: left; display: inline-block; margin-top: 10px;">
                                 <li>Connected to the same network</li>
@@ -2911,7 +2916,7 @@ float readTemperatureSensor() {
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <div style="flex: 1;">
                                 <div style="font-size: 1.2rem; font-weight: 600; margin-bottom: 8px; color: var(--primary-color);">
-                                    📡 ${device.sensor_id}${isMulti}
+                                    &#128225; ${device.sensor_id}${isMulti}
                                 </div>
                                 <div style="color: var(--text-secondary); font-size: 0.9rem;">
                                     <div><strong>IP:</strong> ${device.ip}</div>
@@ -2923,7 +2928,7 @@ float readTemperatureSensor() {
                             </div>
                             <div>
                                 <button class="save-btn" onclick="selectDevice(event, ${JSON.stringify(device).replace(/"/g, '&quot;')})" style="padding: 10px 20px;">
-                                    Select →
+                                    Select &rarr;
                                 </button>
                             </div>
                         </div>
@@ -3338,7 +3343,7 @@ float readTemperatureSensor() {
     <div id="setupWizardModal" class="sensor-modal" style="display: none;">
         <div class="sensor-modal-content" style="max-width: 800px;">
             <div class="sensor-modal-header">
-                <h2>🔍 UDP Sensor Setup Wizard</h2>
+                <h2>&#128269; UDP Sensor Setup Wizard</h2>
                 <button class="graph-close-btn" onclick="closeSetupWizard()" style="width: 40px; height: 40px;">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -3355,7 +3360,7 @@ float readTemperatureSensor() {
                     </p>
                     
                     <button onclick="scanForDevices()" class="save-btn" style="margin-bottom: 20px;">
-                        🔄 Scan Again
+                        &#8635; Scan Again
                     </button>
                     
                     <div id="discoveredDevicesList" style="max-height: 400px; overflow-y: auto;">
@@ -3386,8 +3391,8 @@ float readTemperatureSensor() {
                     </div>
                     
                     <div style="display: flex; gap: 15px; margin-top: 30px;">
-                        <button onclick="wizardGoBack()" class="cancel-btn">« Back</button>
-                        <button onclick="wizardFinish()" class="save-btn" style="flex: 1;">✓ Finish Setup</button>
+                        <button onclick="wizardGoBack()" class="cancel-btn">&laquo; Back</button>
+                        <button onclick="wizardFinish()" class="save-btn" style="flex: 1;">&#10003; Finish Setup</button>
                     </div>
                 </div>
             </div>
