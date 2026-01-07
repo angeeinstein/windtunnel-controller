@@ -8,6 +8,7 @@ import re
 import csv
 import sys
 import sqlite3
+import socket
 import logging
 from datetime import datetime
 from threading import Lock, Thread
