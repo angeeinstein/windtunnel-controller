@@ -183,10 +183,10 @@ SENSOR_TYPES = {
         'category': 'calculated',
         'description': 'Multi-sensor force balance with calibration for lift measurement',
         'fields': [
-            {'name': 'source_sensor_1', 'label': 'Lift Load Cell 1 (HX711)', 'type': 'sensor_select', 'sensor_type': 'HX711', 'required': True},
-            {'name': 'source_sensor_2', 'label': 'Lift Load Cell 2 (HX711)', 'type': 'sensor_select', 'sensor_type': 'HX711', 'required': True},
-            {'name': 'source_sensor_3', 'label': 'Drag Load Cell (HX711)', 'type': 'sensor_select', 'sensor_type': 'HX711', 'required': True},
-            {'name': 'formula', 'label': 'Geometric Formula', 'type': 'text', 'placeholder': 'e.g., (s1 * 0.254 + s2 * 0.254) / 1000', 'help': 'Use s1, s2, s3 for load cell readings (after tare). Include lever arms and unit conversions.'},
+            {'name': 'source_sensor_1', 'label': 'Source Sensor 1', 'type': 'sensor_select', 'required': True, 'help': 'Any sensor type (HX711, UDP, calculated, etc.)'},
+            {'name': 'source_sensor_2', 'label': 'Source Sensor 2', 'type': 'sensor_select', 'required': True, 'help': 'Any sensor type (HX711, UDP, calculated, etc.)'},
+            {'name': 'source_sensor_3', 'label': 'Source Sensor 3', 'type': 'sensor_select', 'required': True, 'help': 'Any sensor type (HX711, UDP, calculated, etc.)'},
+            {'name': 'formula', 'label': 'Geometric Formula', 'type': 'text', 'placeholder': 'e.g., (s1 * 0.254 + s2 * 0.254) / 1000', 'help': 'Use s1, s2, s3 for sensor readings (after tare). Include lever arms and unit conversions.'},
             {'name': 'calibration_info', 'label': 'Calibration Status', 'type': 'info', 'value': 'Not calibrated - use Calibrate button to tare and set calibration factor'}
         ]
     },
@@ -195,10 +195,10 @@ SENSOR_TYPES = {
         'category': 'calculated',
         'description': 'Multi-sensor force balance with calibration for drag measurement',
         'fields': [
-            {'name': 'source_sensor_1', 'label': 'Lift Load Cell 1 (HX711)', 'type': 'sensor_select', 'sensor_type': 'HX711', 'required': True},
-            {'name': 'source_sensor_2', 'label': 'Lift Load Cell 2 (HX711)', 'type': 'sensor_select', 'sensor_type': 'HX711', 'required': True},
-            {'name': 'source_sensor_3', 'label': 'Drag Load Cell (HX711)', 'type': 'sensor_select', 'sensor_type': 'HX711', 'required': True},
-            {'name': 'formula', 'label': 'Geometric Formula', 'type': 'text', 'placeholder': 'e.g., s3 * 0.180 / 1000', 'help': 'Use s1, s2, s3 for load cell readings (after tare). Include lever arms and unit conversions.'},
+            {'name': 'source_sensor_1', 'label': 'Source Sensor 1', 'type': 'sensor_select', 'required': True, 'help': 'Any sensor type (HX711, UDP, calculated, etc.)'},
+            {'name': 'source_sensor_2', 'label': 'Source Sensor 2', 'type': 'sensor_select', 'required': True, 'help': 'Any sensor type (HX711, UDP, calculated, etc.)'},
+            {'name': 'source_sensor_3', 'label': 'Source Sensor 3', 'type': 'sensor_select', 'required': True, 'help': 'Any sensor type (HX711, UDP, calculated, etc.)'},
+            {'name': 'formula', 'label': 'Geometric Formula', 'type': 'text', 'placeholder': 'e.g., s3 * 0.180 / 1000', 'help': 'Use s1, s2, s3 for sensor readings (after tare). Include lever arms and unit conversions.'},
             {'name': 'calibration_info', 'label': 'Calibration Status', 'type': 'info', 'value': 'Not calibrated - use Calibrate button to tare and set calibration factor'}
         ]
     },
@@ -210,7 +210,8 @@ SENSOR_TYPES = {
             {'name': 'udp_port', 'label': 'UDP Port', 'type': 'number', 'default': 5000, 'min': 1024, 'max': 65535, 'help': 'Port to listen on for UDP packets. Multiple sensors can share the same port.'},
             {'name': 'sensor_id', 'label': 'Sensor ID (Must be unique!)', 'type': 'text', 'placeholder': 'e.g., esp32_temp_1', 'help': 'Each sensor must have a unique ID. Your device must send packets with this exact ID.'},
             {'name': 'timeout', 'label': 'Timeout (seconds)', 'type': 'number', 'default': 5, 'min': 1, 'max': 60, 'help': 'Mark as disconnected if no data received for this long'},
-            {'name': 'packet_format', 'label': 'Required Packet Format', 'type': 'info', 'value': 'Send JSON via UDP: {"id": "your_sensor_id", "value": 23.5}'},
+            {'name': 'packet_format', 'label': 'Packet Format', 'type': 'info', 'value': 'Single: {"id": "sensor_id", "value": 23.5} OR Multi: {"id": "base_id", "values": {"lift": 10.5, "drag": 2.3}}'},
+            {'name': 'multi_value_info', 'label': 'Multi-Value Sensors', 'type': 'info', 'value': 'Multi-value packets create multiple sensor IDs: "base_id_lift", "base_id_drag", etc.'},
             {'name': 'discovery_info', 'label': 'Discovery', 'type': 'info', 'value': 'Tip: Visit /api/udp/devices to see all devices currently sending UDP data'}
         ]
     },
@@ -1305,6 +1306,38 @@ def read_force_balance(instance, config):
         print(f"Error reading force balance: {e}")
         return 0.0
 
+def auto_create_udp_sensor(sensor_id, port, source_ip):
+    """Auto-create a UDP sensor configuration if it doesn't exist"""
+    try:
+        # Check if sensor already exists
+        sensors = load_sensors()
+        for sensor in sensors:
+            if sensor.get('id') == sensor_id:
+                return  # Already exists
+        
+        # Create new sensor configuration
+        new_sensor = {
+            'id': sensor_id,
+            'name': f'UDP: {sensor_id}',
+            'type': 'udp_network',
+            'enabled': True,
+            'config': {
+                'udp_port': port,
+                'sensor_id': sensor_id,
+                'timeout': 5
+            }
+        }
+        
+        sensors.append(new_sensor)
+        save_sensors(sensors)
+        print(f"Auto-created UDP sensor: {sensor_id} on port {port}")
+        
+        # Emit socket event to update UI
+        socketio.emit('sensor_added', new_sensor)
+        
+    except Exception as e:
+        print(f"Error auto-creating UDP sensor: {e}")
+
 def udp_listener_thread(port):
     """Background thread to listen for UDP packets on a specific port"""
     import socket
@@ -1326,19 +1359,42 @@ def udp_listener_thread(port):
                 # Try to parse JSON
                 try:
                     packet = json.loads(data.decode('utf-8'))
-                    sensor_id = packet.get('id')
-                    value = packet.get('value')
                     
-                    if sensor_id and value is not None:
-                        udp_sensor_data[sensor_id] = {
-                            'value': float(value),
-                            'timestamp': time.time(),
-                            'port': port,
-                            'source_ip': addr[0]
-                        }
-                        print(f"UDP received from {addr[0]}: {sensor_id} = {value}")
+                    # Check for multi-value format: {"id": "esp32_1", "values": {"lift": 10.5, "drag": 2.3}}
+                    if 'values' in packet and isinstance(packet['values'], dict):
+                        base_id = packet.get('id', 'unknown')
+                        for key, value in packet['values'].items():
+                            sensor_id = f"{base_id}_{key}"
+                            udp_sensor_data[sensor_id] = {
+                                'value': float(value),
+                                'timestamp': time.time(),
+                                'port': port,
+                                'source_ip': addr[0]
+                            }
+                            # Auto-create sensor configuration
+                            auto_create_udp_sensor(sensor_id, port, addr[0])
+                            print(f"UDP multi-value from {addr[0]}: {sensor_id} = {value}")
+                    
+                    # Check for single-value format: {"id": "sensor_id", "value": 23.5}
+                    elif 'id' in packet and 'value' in packet:
+                        sensor_id = packet.get('id')
+                        value = packet.get('value')
+                        
+                        if sensor_id and value is not None:
+                            udp_sensor_data[sensor_id] = {
+                                'value': float(value),
+                                'timestamp': time.time(),
+                                'port': port,
+                                'source_ip': addr[0]
+                            }
+                            # Auto-create sensor configuration
+                            auto_create_udp_sensor(sensor_id, port, addr[0])
+                            print(f"UDP received from {addr[0]}: {sensor_id} = {value}")
+                        else:
+                            print(f"UDP packet missing id or value: {packet}")
                     else:
-                        print(f"UDP packet missing id or value: {packet}")
+                        print(f"UDP packet invalid format: {packet}")
+                        
                 except json.JSONDecodeError:
                     print(f"UDP packet not valid JSON from {addr[0]}: {data}")
                 except ValueError as e:
@@ -1396,6 +1452,8 @@ def udp_discovery_listener():
                                 'mac': packet.get('mac', 'unknown'),
                                 'sensor_type': packet.get('sensor_type', 'unknown'),
                                 'firmware': packet.get('firmware', 'unknown'),
+                                'multi_value': packet.get('multi_value', False),
+                                'sensor_keys': packet.get('sensor_keys', ['value']),
                                 'last_seen': time.time()
                             }
                             logger.debug(f"Discovered device: {sensor_id} at {addr[0]}")
@@ -3207,6 +3265,98 @@ def get_udp_devices():
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/udp/setup-device', methods=['POST'])
+def setup_device_wizard():
+    """Setup wizard endpoint - configure ESP32 and create sensors"""
+    try:
+        import socket as sock
+        data = request.json
+        device_ip = data.get('device_ip')
+        device_id = data.get('device_id')
+        sensor_keys = data.get('sensor_keys', ['value'])
+        sensor_configs = data.get('sensor_configs', [])  # [{key, name, color, visible}]
+        port = data.get('port', 5000)
+        rate = data.get('rate', 1000)
+        
+        if not device_ip or not device_id:
+            return jsonify({'error': 'Missing device_ip or device_id'}), 400
+        
+        # Step 1: Configure the ESP32
+        config_result = configure_esp32_sensor(
+            device_ip, 
+            sock.gethostbyname(sock.gethostname()), 
+            port, 
+            rate,
+            device_id
+        )
+        
+        if config_result.get('status') != 'success':
+            return jsonify({'error': 'Failed to configure ESP32', 'details': config_result}), 500
+        
+        # Step 2: Create sensor configurations
+        sensors = load_sensors()
+        created_sensors = []
+        
+        for config in sensor_configs:
+            key = config.get('key')
+            if not key:
+                continue
+                
+            # Create sensor ID (composite if multi-value)
+            if len(sensor_keys) > 1:
+                sensor_id = f"{device_id}_{key}"
+            else:
+                sensor_id = device_id
+            
+            # Check if already exists
+            if any(s.get('id') == sensor_id for s in sensors):
+                continue
+            
+            # Create sensor
+            new_sensor = {
+                'id': sensor_id,
+                'name': config.get('name', f'{device_id} - {key}'),
+                'type': 'udp_network',
+                'enabled': config.get('visible', True),
+                'config': {
+                    'udp_port': port,
+                    'sensor_id': sensor_id,
+                    'timeout': 5
+                },
+                'chart_color': config.get('color', generate_random_color())
+            }
+            
+            sensors.append(new_sensor)
+            created_sensors.append(new_sensor)
+        
+        save_sensors(sensors)
+        
+        # Step 3: Start data transmission
+        start_result = start_esp32_sensor(device_ip)
+        
+        # Emit updates
+        for sensor in created_sensors:
+            socketio.emit('sensor_added', sensor)
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Created {len(created_sensors)} sensors',
+            'sensors': created_sensors,
+            'esp32_status': start_result
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+def generate_random_color():
+    """Generate a random color for sensor charts"""
+    import random
+    colors = [
+        '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
+        '#FF9F40', '#FF6384', '#C9CBCF', '#4BC0C0', '#FF9F40'
+    ]
+    return random.choice(colors)
 
 @app.route('/api/refresh-sensor-libraries', methods=['POST'])
 def refresh_sensor_libraries():
