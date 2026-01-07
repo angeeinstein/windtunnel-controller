@@ -1424,12 +1424,14 @@ def udp_discovery_listener():
     
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)  # Enable broadcast
     sock.settimeout(1.0)  # 1 second timeout
     
     try:
         sock.bind(('0.0.0.0', UDP_DISCOVERY_PORT))
         logger.info(f"UDP discovery listener started on port {UDP_DISCOVERY_PORT}")
         print(f"UDP discovery listener is active on port {UDP_DISCOVERY_PORT}")
+        print(f"Socket bound successfully to 0.0.0.0:{UDP_DISCOVERY_PORT}")
         
         while True:
             try:
