@@ -3312,7 +3312,7 @@ def setup_device_wizard():
             return jsonify({'error': 'Failed to configure ESP32', 'details': config_result}), 500
         
         # Step 2: Create sensor configurations
-        sensors = load_sensors()
+        sensors = current_settings.get('sensors', [])
         created_sensors = []
         
         for config in sensor_configs:
@@ -3347,7 +3347,9 @@ def setup_device_wizard():
             sensors.append(new_sensor)
             created_sensors.append(new_sensor)
         
-        save_sensors(sensors)
+        # Save updated sensors
+        current_settings['sensors'] = sensors
+        save_settings_to_file(current_settings)
         
         # Step 3: Start data transmission
         start_result = start_esp32_sensor(device_ip)
