@@ -3997,16 +3997,14 @@ def post_fork(server, worker):
 # Initialize database
 init_database()
 
-# Try to start threads (will work for direct execution, not Gunicorn workers)
-# Gunicorn workers will use post_fork hook instead
-try:
-    init_background_threads()
-except Exception as e:
-    print(f"Note: Background threads not started at module load (expected for Gunicorn): {e}")
+# NOTE: Background threads should NOT be started at module load when using Gunicorn
+# They will be started by the post_fork() hook in worker processes
+# For direct execution (python app.py), threads start in the if __name__ == '__main__' block
 
 if __name__ == '__main__':
-    # Threads are already started by init_background_threads() above
-    # This block only runs for direct Python execution (not Gunicorn)
+    # Direct Python execution - start threads manually
+    logger.info("Running in direct mode - starting background threads...")
+    init_background_threads()
     
     # Run on all interfaces for Raspberry Pi access
     # Use port 80 (standard HTTP port), disable debug in production
