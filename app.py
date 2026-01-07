@@ -1463,6 +1463,7 @@ def udp_discovery_listener():
                                 'last_seen': time.time()
                             }
                             logger.info(f"✓ Discovered device: {sensor_id} at {addr[0]} (multi_value={packet.get('multi_value')})")
+                            logger.info(f"✓ discovered_devices now has {len(discovered_devices)} entries, dict id: {id(discovered_devices)}")
                             print(f"✓ ESP32 discovered: {sensor_id} at {addr[0]}")
                     else:
                         logger.debug(f"Received non-announcement packet from {addr[0]}: {packet.get('type')}")
@@ -3075,6 +3076,9 @@ def discover_udp_devices():
         with discovery_lock:
             current_time = time.time()
             devices = []
+            
+            logger.info(f"API /api/udp/discover called - discovered_devices has {len(discovered_devices)} entries")
+            logger.info(f"discovered_devices dict id: {id(discovered_devices)}")
             
             for dev_id, dev in discovered_devices.items():
                 age = current_time - dev['last_seen']
