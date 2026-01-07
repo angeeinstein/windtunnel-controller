@@ -1436,8 +1436,8 @@ def udp_discovery_listener():
         
         while True:
             try:
-                data, addr = sock.recvfrom(1024)
-                logger.info(f"Received UDP packet from {addr[0]}: {data[:100]}")  # Log first 100 chars
+                data, addr = sock.recvfrom(2048)
+                logger.info(f"Received UDP packet from {addr[0]}: {data}")  # Log full packet
                 
                 try:
                     packet = json.loads(data.decode('utf-8'))
