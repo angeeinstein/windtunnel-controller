@@ -1268,10 +1268,16 @@ def read_force_balance(instance, config):
         s2_id = config.get('source_sensor_2')
         s3_id = config.get('source_sensor_3')
         
+        # Debug: Log what we're looking for and what's available
+        print(f"Force balance looking for: s1={s1_id}, s2={s2_id}, s3={s3_id}")
+        print(f"Available sensor values: {list(sensor_last_values.keys())}")
+        
         # Read raw values from source sensors
         raw_s1 = sensor_last_values.get(s1_id, 0)
         raw_s2 = sensor_last_values.get(s2_id, 0)
         raw_s3 = sensor_last_values.get(s3_id, 0)
+        
+        print(f"Raw values: s1={raw_s1}, s2={raw_s2}, s3={raw_s3}")
         
         # Apply tare offsets
         calibration = instance.get('calibration', {})
