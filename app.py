@@ -1311,7 +1311,7 @@ def auto_create_udp_sensor(sensor_id, port, source_ip):
     """Auto-create a UDP sensor configuration if it doesn't exist"""
     try:
         # Check if sensor already exists
-        sensors = load_sensors()
+        sensors = current_settings.get('sensors', [])
         for sensor in sensors:
             if sensor.get('id') == sensor_id:
                 return  # Already exists
@@ -1330,7 +1330,8 @@ def auto_create_udp_sensor(sensor_id, port, source_ip):
         }
         
         sensors.append(new_sensor)
-        save_sensors(sensors)
+        current_settings['sensors'] = sensors
+        save_settings_to_file(current_settings)
         print(f"Auto-created UDP sensor: {sensor_id} on port {port}")
         
         # Emit socket event to update UI
@@ -3312,6 +3313,8 @@ def setup_device_wizard():
         sensor_configs = data.get('sensor_configs', [])  # [{key, name, color, visible}]
         port = data.get('port', 5000)
         rate = data.get('rate', 1000)
+        
+        logger.info(f"Wizard received: device_ip={device_ip}, device_id={device_id}, sensor_keys={sensor_keys}")
         
         if not device_ip or not device_id:
             return jsonify({'error': 'Missing device_ip or device_id'}), 400

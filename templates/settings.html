@@ -3062,6 +3062,14 @@ float readTemperatureSensor() {
                     });
                 });
                 
+                // Log what we're sending
+                console.log('Setting up device:', {
+                    device_ip: wizardSelectedDevice.ip,
+                    device_id: wizardSelectedDevice.sensor_id,
+                    sensor_keys: sensorKeys,
+                    full_device: wizardSelectedDevice
+                });
+                
                 // Send setup request
                 const response = await fetch('/api/udp/setup-device', {
                     method: 'POST',
