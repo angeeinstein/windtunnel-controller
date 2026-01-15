@@ -1925,6 +1925,14 @@ float readTemperatureSensor() {
                 html += `<input type="text" inputmode="text" id="hw_${field.name}" value="${value}" placeholder="${field.placeholder || ''}" style="width: 100%; padding: 10px; border: 2px solid var(--border-color); border-radius: 6px; font-size: 1rem;">`;
             }
             
+            // Add special hint for formula field in force balance sensors
+            if (field.name === 'formula' && (sensorType === 'force_balance_lift' || sensorType === 'force_balance_drag')) {
+                html += `<div style="background: #e3f2fd; border-left: 4px solid #2196f3; padding: 10px; margin-top: 8px; border-radius: 4px;">`;
+                html += `<p style="margin: 0; font-size: 0.85rem; color: #1565c0;"><strong>💡 Tip:</strong> Use <code style="background: white; padding: 2px 6px; border-radius: 3px; color: #d32f2f; font-weight: bold;">s1</code>, <code style="background: white; padding: 2px 6px; border-radius: 3px; color: #d32f2f; font-weight: bold;">s2</code>, <code style="background: white; padding: 2px 6px; border-radius: 3px; color: #d32f2f; font-weight: bold;">s3</code> as placeholders for the three source sensors.</p>`;
+                html += `<p style="margin: 6px 0 0 0; font-size: 0.8rem; color: #1976d2;">Example: <code>s1 + s2</code> or <code>(s1 + s2) * 0.5 - s3</code></p>`;
+                html += `</div>`;
+            }
+            
             html += `</div>`;
             return html;
         }
@@ -2251,7 +2259,7 @@ float readTemperatureSensor() {
                 
                 footer.innerHTML = `
                     <button class="cancel-btn" onclick="closeCalibrationModal()">Cancel</button>
-                    <button class="primary-btn" onclick="captureTare()">Capture Tare</button>
+                    <button class="save-btn" onclick="captureTare()">Capture Tare</button>
                 `;
                 
                 startLiveReadings();
@@ -2283,7 +2291,7 @@ float readTemperatureSensor() {
                 
                 footer.innerHTML = `
                     <button class="secondary-btn" onclick="calibrationState.step = 1; renderCalibrationStep()">Back</button>
-                    <button class="primary-btn" onclick="captureCalibrationPoint()">Capture Calibration</button>
+                    <button class="save-btn" onclick="captureCalibrationPoint()">Capture Calibration</button>
                 `;
                 
                 startLiveReadings();
@@ -2313,7 +2321,7 @@ float readTemperatureSensor() {
                 
                 footer.innerHTML = `
                     <button class="secondary-btn" onclick="calibrationState.step = 2; renderCalibrationStep()">Back</button>
-                    <button class="primary-btn" onclick="saveCalibration()">Save Calibration</button>
+                    <button class="save-btn" onclick="saveCalibration()">Save Calibration</button>
                 `;
             }
         }
@@ -2453,8 +2461,8 @@ float readTemperatureSensor() {
                     showNotification('Calibration Saved', result.message, 'success');
                     closeCalibrationModal();
                     
-                    // Reload sensors to show updated status
-                    await loadSensors();
+                    // Reload page to show updated status
+                    setTimeout(() => location.reload(), 1000);
                 } else {
                     showNotification('Error', result.error || 'Failed to save calibration', 'error');
                 }
