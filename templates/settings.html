@@ -2713,8 +2713,7 @@ float readTemperatureSensor() {
                 
                 const sensor = sensors.find(s => s.id === sensorId);
                 const notification = showNotification('Sending Command', `Contacting ESP32 at ${ip}...`, 'warning', true);
-            
-            try {
+                
                 let endpoint, body;
                 
                 switch (command) {
@@ -2775,7 +2774,8 @@ float readTemperatureSensor() {
                 }
                 
             } catch (error) {
-                notification.remove();
+                const notification = document.querySelector('.notification');
+                if (notification) notification.remove();
                 showNotification('Error', `Failed to contact ESP32: ${error.message}`, 'error');
             }
         }
