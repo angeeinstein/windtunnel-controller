@@ -2638,14 +2638,15 @@ float readTemperatureSensor() {
 
         // ESP32 Device Management
         async function manageESP32(sensorId) {
-            // Find sensor to get IP from discovered devices
-            const sensor = sensors.find(s => s.id === sensorId);
-            if (!sensor || !sensor.config || !sensor.config.sensor_id) {
-                showNotification('Error', 'Sensor configuration not found', 'error');
-                return;
-            }
-            
-            const modal = document.createElement('div');
+            try {
+                // Find sensor to get IP from discovered devices
+                const sensor = sensors.find(s => s.id === sensorId);
+                if (!sensor || !sensor.config || !sensor.config.sensor_id) {
+                    showNotification('Error', 'Sensor configuration not found', 'error');
+                    return;
+                }
+                
+                const modal = document.createElement('div');
             modal.id = 'esp32ManageModal';
             modal.className = 'notification';
             modal.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 600px; width: 90%; z-index: 10000; background: var(--card-bg); padding: 20px; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.3);';
@@ -2695,18 +2696,23 @@ float readTemperatureSensor() {
             `;
             
             document.body.appendChild(modal);
+            } catch (error) {
+                console.error('Error in manageESP32:', error);
+                showNotification('Error', `Failed to open ESP32 control: ${error.message}`, 'error');
+            }
         }
         
         async function sendESP32Command(command, sensorId) {
-            const ip = document.getElementById('esp32IP')?.value;
-            
-            if (!ip || !ip.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/)) {
-                showNotification('Error', 'Please enter a valid IP address', 'error');
-                return;
-            }
-            
-            const sensor = sensors.find(s => s.id === sensorId);
-            const notification = showNotification('Sending Command', `Contacting ESP32 at ${ip}...`, 'warning', true);
+            try {
+                const ip = document.getElementById('esp32IP')?.value;
+                
+                if (!ip || !ip.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/)) {
+                    showNotification('Error', 'Please enter a valid IP address', 'error');
+                    return;
+                }
+                
+                const sensor = sensors.find(s => s.id === sensorId);
+                const notification = showNotification('Sending Command', `Contacting ESP32 at ${ip}...`, 'warning', true);
             
             try {
                 let endpoint, body;
