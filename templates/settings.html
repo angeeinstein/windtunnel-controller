@@ -2640,7 +2640,7 @@ float readTemperatureSensor() {
         async function manageESP32(sensorId) {
             console.log('manageESP32 called with sensorId:', sensorId);
             try {
-                // Find sensor to get IP from discovered devices
+                // Find sensor to get configuration
                 const sensor = sensors.find(s => s.id === sensorId);
                 console.log('Found sensor:', sensor);
                 if (!sensor || !sensor.config || !sensor.config.sensor_id) {
@@ -2648,78 +2648,35 @@ float readTemperatureSensor() {
                     return;
                 }
                 
-                // Create backdrop
-                const backdrop = document.createElement('div');
-                backdrop.id = 'esp32Backdrop';
-                backdrop.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999; backdrop-filter: blur(2px);';
-                backdrop.onclick = () => {
-                    backdrop.remove();
-                    document.getElementById('esp32ManageModal')?.remove();
-                };
+                // Set modal title and placeholder
+                document.getElementById('esp32DeviceId').textContent = sensor.config.sensor_id;
+                document.getElementById('esp32NewID').placeholder = sensor.config.sensor_id;
                 
-                // Create modal
-                const modal = document.createElement('div');
-                modal.id = 'esp32ManageModal';
-                modal.className = 'notification';
-                modal.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 600px; width: 90%; z-index: 10000; background: #2c3e50; padding: 20px; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.3);';
-                modal.onclick = (e) => e.stopPropagation(); // Prevent closing when clicking modal content
+                // Store current sensor ID for command functions
+                window.currentESP32SensorId = sensorId;
                 
-                modal.innerHTML = `
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                        <h3 style="margin: 0; color: var(--text-primary);">ESP32 Control: ${sensor.config.sensor_id}</h3>
-                        <button onclick="document.getElementById('esp32Backdrop').remove(); document.getElementById('esp32ManageModal').remove();" style="background: none; border: none; color: var(--text-secondary); font-size: 1.5rem; cursor: pointer; padding: 0; width: 30px; height: 30px;">&times;</button>
-                    </div>
-                    
-                    <div style="background: var(--bg-color); padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-                        <h4 style="margin: 0 0 10px 0; color: var(--text-primary);">Device Configuration</h4>
-                        <div style="margin-bottom: 10px;">
-                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">ESP32 IP Address:</label>
-                            <input type="text" id="esp32IP" placeholder="192.168.1.100" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--card-bg); color: var(--text-primary);">
-                            <small style="color: var(--text-secondary);">Enter the IP address of your ESP32 device</small>
-                        </div>
-                        
-                        <div style="margin-bottom: 10px;">
-                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Sensor Rate (ms):</label>
-                            <input type="number" id="esp32Rate" value="1000" min="100" max="60000" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--card-bg); color: var(--text-primary);">
-                            <small style="color: var(--text-secondary);">Milliseconds between readings (1000 = 1 second)</small>
-                        </div>
-                        
-                        <div style="margin-bottom: 10px;">
-                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">New Sensor ID (optional):</label>
-                            <input type="text" id="esp32NewID" placeholder="${sensor.config.sensor_id}" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--card-bg); color: var(--text-primary);">
-                            <small style="color: var(--text-secondary);">Leave empty to keep current ID</small>
-                        </div>
-                    </div>
-                    
-                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 15px;">
-                        <button onclick="sendESP32Command('status', '${sensorId}')" style="background: var(--primary-color); color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: bold;">
-                            Get Status
-                        </button>
-                        <button onclick="sendESP32Command('configure', '${sensorId}')" style="background: var(--warning-color); color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: bold;">
-                            Configure
-                        </button>
-                        <button onclick="sendESP32Command('start', '${sensorId}')" style="background: var(--success-color); color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: bold;">
-                            Start
-                        </button>
-                    </div>
-                    
-                    <button onclick="sendESP32Command('stop', '${sensorId}')" style="width: 100%; background: var(--error-color); color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: bold;">
-                        Stop Data Transmission
-                    </button>
-                `;
+                // Show modal
+                document.getElementById('esp32ControlModal').style.display = 'flex';
                 
-                document.body.appendChild(backdrop);
-                document.body.appendChild(modal);
-                console.log('Modal and backdrop added to DOM');
-                console.log('Backdrop element:', backdrop);
-                console.log('Modal element:', modal);
+                console.log('ESP32 Control modal opened');
             } catch (error) {
                 console.error('Error in manageESP32:', error);
                 showNotification('Error', `Failed to open ESP32 control: ${error.message}`, 'error');
             }
         }
         
-        async function sendESP32Command(command, sensorId) {
+        function closeESP32Control() {
+            document.getElementById('esp32ControlModal').style.display = 'none';
+            window.currentESP32SensorId = null;
+        }
+        
+        async function sendESP32Command(command) {
+            const sensorId = window.currentESP32SensorId;
+            if (!sensorId) {
+                showNotification('Error', 'No sensor selected', 'error');
+                return;
+            }
+            
             try {
                 const ip = document.getElementById('esp32IP')?.value;
                 
@@ -2784,8 +2741,7 @@ float readTemperatureSensor() {
                     
                     // Close modal if stop command
                     if (command === 'stop') {
-                        document.getElementById('esp32Backdrop')?.remove();
-                        document.getElementById('esp32ManageModal')?.remove();
+                        closeESP32Control();
                     }
                 } else {
                     showNotification('Command Failed', result.error || 'ESP32 did not respond correctly', 'error');
@@ -3531,6 +3487,63 @@ float readTemperatureSensor() {
             
             <div class="sensor-modal-footer" id="calibrationFooter">
                 <!-- Footer buttons will be rendered here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- ESP32 Control Modal -->
+    <div id="esp32ControlModal" class="sensor-modal" style="display: none;">
+        <div class="sensor-modal-content" style="max-width: 600px;">
+            <div class="sensor-modal-header">
+                <h2>&#128268; ESP32 Control</h2>
+                <button class="graph-close-btn" onclick="closeESP32Control()" style="width: 40px; height: 40px;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            
+            <div class="sensor-modal-body">
+                <h3 id="esp32ControlTitle" style="margin: 0 0 20px 0; color: var(--primary-color);">Device: <span id="esp32DeviceId"></span></h3>
+                
+                <div style="background: var(--bg-secondary); padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                    <h4 style="margin: 0 0 15px 0;">Device Configuration</h4>
+                    
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">ESP32 IP Address:</label>
+                        <input type="text" id="esp32IP" placeholder="192.168.1.100" style="width: 100%; padding: 10px; border: 2px solid var(--border-color); border-radius: 6px; font-size: 1rem;">
+                        <small style="color: var(--text-secondary); display: block; margin-top: 5px;">Enter the IP address of your ESP32 device</small>
+                    </div>
+                    
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Sensor Rate (ms):</label>
+                        <input type="number" id="esp32Rate" value="1000" min="100" max="60000" style="width: 100%; padding: 10px; border: 2px solid var(--border-color); border-radius: 6px; font-size: 1rem;">
+                        <small style="color: var(--text-secondary); display: block; margin-top: 5px;">Milliseconds between readings (1000 = 1 second)</small>
+                    </div>
+                    
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">New Sensor ID (optional):</label>
+                        <input type="text" id="esp32NewID" placeholder="" style="width: 100%; padding: 10px; border: 2px solid var(--border-color); border-radius: 6px; font-size: 1rem;">
+                        <small style="color: var(--text-secondary); display: block; margin-top: 5px;">Leave empty to keep current ID</small>
+                    </div>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+                    <button onclick="sendESP32Command('status')" class="primary-btn" style="padding: 12px;">
+                        Get Status
+                    </button>
+                    <button onclick="sendESP32Command('configure')" class="warning-btn" style="padding: 12px;">
+                        Configure
+                    </button>
+                    <button onclick="sendESP32Command('start')" class="save-btn" style="padding: 12px;">
+                        Start
+                    </button>
+                </div>
+                
+                <button onclick="sendESP32Command('stop')" class="delete-btn" style="width: 100%; padding: 12px;">
+                    Stop Data Transmission
+                </button>
             </div>
         </div>
     </div>
