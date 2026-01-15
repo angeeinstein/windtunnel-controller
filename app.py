@@ -1309,7 +1309,12 @@ def read_force_balance(instance, config):
 
 def auto_create_udp_sensor(sensor_id, port, source_ip):
     """Auto-create a UDP sensor configuration if it doesn't exist"""
+    global deleted_udp_sensors
     try:
+        # Check if sensor was manually deleted (don't auto-recreate)
+        if sensor_id in deleted_udp_sensors:
+            return
+        
         # Check if sensor already exists
         sensors = current_settings.get('sensors', [])
         for sensor in sensors:
@@ -2418,7 +2423,7 @@ def get_settings():
 def update_settings():
     """Update settings."""
     from flask import request
-    global current_settings, sensor_instances
+    global current_settings, sensor_instances, deleted_udp_sensors
     
     try:
         new_settings = request.get_json()
@@ -2430,6 +2435,14 @@ def update_settings():
                 old_sensor_ids = {s.get('id') for s in current_settings.get('sensors', [])}
                 new_sensor_ids = {s.get('id') for s in new_settings.get('sensors', [])}
                 removed_sensors = old_sensor_ids - new_sensor_ids
+                
+                # Track deleted UDP sensors to prevent auto-recreation
+                for sensor_id in removed_sensors:
+                    for sensor in current_settings.get('sensors', []):
+                        if sensor.get('id') == sensor_id and sensor.get('type') == 'udp_network':
+                            deleted_udp_sensors.add(sensor_id)
+                            print(f"Added {sensor_id} to deleted UDP sensors blacklist")
+                            break
                 
                 # Cleanup removed sensors
                 for sensor_id in removed_sensors:
