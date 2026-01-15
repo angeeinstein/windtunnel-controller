@@ -2646,15 +2646,26 @@ float readTemperatureSensor() {
                     return;
                 }
                 
+                // Create backdrop
+                const backdrop = document.createElement('div');
+                backdrop.id = 'esp32Backdrop';
+                backdrop.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999; backdrop-filter: blur(2px);';
+                backdrop.onclick = () => {
+                    backdrop.remove();
+                    document.getElementById('esp32ManageModal')?.remove();
+                };
+                
+                // Create modal
                 const modal = document.createElement('div');
                 modal.id = 'esp32ManageModal';
                 modal.className = 'notification';
                 modal.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 600px; width: 90%; z-index: 10000; background: var(--card-bg); padding: 20px; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.3);';
+                modal.onclick = (e) => e.stopPropagation(); // Prevent closing when clicking modal content
                 
                 modal.innerHTML = `
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                         <h3 style="margin: 0; color: var(--text-primary);">ESP32 Control: ${sensor.config.sensor_id}</h3>
-                        <button onclick="document.getElementById('esp32ManageModal').remove();" style="background: none; border: none; color: var(--text-secondary); font-size: 1.5rem; cursor: pointer; padding: 0; width: 30px; height: 30px;">&times;</button>
+                        <button onclick="document.getElementById('esp32Backdrop').remove(); document.getElementById('esp32ManageModal').remove();" style="background: none; border: none; color: var(--text-secondary); font-size: 1.5rem; cursor: pointer; padding: 0; width: 30px; height: 30px;">&times;</button>
                     </div>
                     
                     <div style="background: var(--bg-color); padding: 15px; border-radius: 8px; margin-bottom: 15px;">
@@ -2695,6 +2706,7 @@ float readTemperatureSensor() {
                     </button>
                 `;
                 
+                document.body.appendChild(backdrop);
                 document.body.appendChild(modal);
             } catch (error) {
                 console.error('Error in manageESP32:', error);
@@ -2767,6 +2779,7 @@ float readTemperatureSensor() {
                     
                     // Close modal if stop command
                     if (command === 'stop') {
+                        document.getElementById('esp32Backdrop')?.remove();
                         document.getElementById('esp32ManageModal')?.remove();
                     }
                 } else {
