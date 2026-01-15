@@ -383,6 +383,7 @@ udp_listeners = {}  # {port: thread} - Track active UDP data listener threads
 # UDP discovery system
 UDP_DISCOVERY_PORT = 5555  # Dedicated port for ESP32 announcements
 discovered_devices = {}  # {device_id: {'sensor_id', 'ip', 'mac', 'sensor_type', 'firmware', 'last_seen'}}
+deleted_udp_sensors = set()  # Track manually deleted UDP sensor IDs to prevent auto-recreation
 discovery_listener_thread = None
 discovery_lock = Lock()
 
