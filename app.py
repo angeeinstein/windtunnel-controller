@@ -1532,6 +1532,23 @@ def send_esp32_command(ip, endpoint, data=None, timeout=5):
         return {'status': 'error', 'error': str(e)}
 
 
+def get_local_ip():
+    """Get the local IP address of this machine that can reach the internet."""
+    try:
+        # Create a socket and connect to a public IP (doesn't actually send data)
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+        return local_ip
+    except Exception as e:
+        logger.error(f"Failed to get local IP: {e}")
+        # Fallback to hostname method
+        try:
+            return socket.gethostbyname(socket.gethostname())
+        except:
+            return "127.0.0.1"
+
 def configure_esp32_sensor(ip, target_ip, target_port, sensor_rate=1000, sensor_id=None):
     """
     Configure ESP32 sensor to send data to this Raspberry Pi.
@@ -1554,7 +1571,8 @@ def configure_esp32_sensor(ip, target_ip, target_port, sensor_rate=1000, sensor_
     
     if sensor_id:
         config_data['sensor_id'] = sensor_id
-        
+    
+    logger.info(f"Configuring ESP32 at {ip} with data: {config_data}")
     return send_esp32_command(ip, '/config', config_data)
 
 
@@ -3287,7 +3305,6 @@ def get_udp_devices():
 def setup_device_wizard():
     """Setup wizard endpoint - configure ESP32 and create sensors"""
     try:
-        import socket as sock
         data = request.json
         device_ip = data.get('device_ip')
         device_id = data.get('device_id')
@@ -3299,10 +3316,14 @@ def setup_device_wizard():
         if not device_ip or not device_id:
             return jsonify({'error': 'Missing device_ip or device_id'}), 400
         
+        # Get the Raspberry Pi's local IP
+        raspberry_pi_ip = get_local_ip()
+        logger.info(f"Setting up ESP32 {device_id} at {device_ip}, will send data to {raspberry_pi_ip}:{port}")
+        
         # Step 1: Configure the ESP32
         config_result = configure_esp32_sensor(
             device_ip, 
-            sock.gethostbyname(sock.gethostname()), 
+            raspberry_pi_ip, 
             port, 
             rate,
             device_id
