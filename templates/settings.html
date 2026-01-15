@@ -2638,9 +2638,11 @@ float readTemperatureSensor() {
 
         // ESP32 Device Management
         async function manageESP32(sensorId) {
+            console.log('manageESP32 called with sensorId:', sensorId);
             try {
                 // Find sensor to get IP from discovered devices
                 const sensor = sensors.find(s => s.id === sensorId);
+                console.log('Found sensor:', sensor);
                 if (!sensor || !sensor.config || !sensor.config.sensor_id) {
                     showNotification('Error', 'Sensor configuration not found', 'error');
                     return;
@@ -2708,6 +2710,9 @@ float readTemperatureSensor() {
                 
                 document.body.appendChild(backdrop);
                 document.body.appendChild(modal);
+                console.log('Modal and backdrop added to DOM');
+                console.log('Backdrop element:', backdrop);
+                console.log('Modal element:', modal);
             } catch (error) {
                 console.error('Error in manageESP32:', error);
                 showNotification('Error', `Failed to open ESP32 control: ${error.message}`, 'error');

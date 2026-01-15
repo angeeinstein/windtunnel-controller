@@ -3368,12 +3368,25 @@ def setup_device_wizard():
             if any(s.get('id') == sensor_id for s in sensors):
                 continue
             
+            # Determine unit based on sensor key
+            unit_map = {
+                'lift': 'N',
+                'drag': 'N',
+                'temp': '°C',
+                'temperature': '°C',
+                'force': 'N',
+                'pressure': 'Pa',
+                'humidity': '%'
+            }
+            unit = unit_map.get(key.lower(), '')
+            
             # Create sensor
             new_sensor = {
                 'id': sensor_id,
                 'name': config.get('name', f'{device_id} - {key}'),
                 'type': 'udp_network',
                 'enabled': config.get('visible', True),
+                'unit': unit,
                 'config': {
                     'udp_port': port,
                     'sensor_id': sensor_id,
