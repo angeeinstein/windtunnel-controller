@@ -2661,7 +2661,7 @@ float readTemperatureSensor() {
                 const modal = document.createElement('div');
                 modal.id = 'esp32ManageModal';
                 modal.className = 'notification';
-                modal.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 600px; width: 90%; z-index: 10000; background: var(--card-bg); padding: 20px; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.3);';
+                modal.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 600px; width: 90%; z-index: 10000; background: #2c3e50; padding: 20px; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.3);';
                 modal.onclick = (e) => e.stopPropagation(); // Prevent closing when clicking modal content
                 
                 modal.innerHTML = `
