@@ -179,6 +179,12 @@ update_repository() {
     # Find git command (use full path for systemd compatibility)
     GIT_CMD=$(command -v git 2>/dev/null || echo "/usr/bin/git")
     
+    # Backup settings.json before update (preserves user configuration and calibration)
+    if [[ -f "settings.json" ]]; then
+        print_info "Backing up settings.json..."
+        cp settings.json settings.json.backup
+    fi
+    
     # Stash any local changes
     if ! $GIT_CMD diff-index --quiet HEAD -- 2>/dev/null; then
         print_info "Stashing local changes..."
@@ -190,6 +196,13 @@ update_repository() {
         print_error "Failed to update repository"
         exit 1
     }
+    
+    # Restore settings.json after update
+    if [[ -f "settings.json.backup" ]]; then
+        print_info "Restoring settings.json..."
+        mv settings.json.backup settings.json
+        print_success "User settings and calibration data preserved"
+    fi
     
     print_success "Repository updated successfully"
 }

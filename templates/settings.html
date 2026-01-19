@@ -748,6 +748,16 @@
 
             <div class="setting-row">
                 <div>
+                    <div class="setting-label">ESP32 Code Template</div>
+                    <div class="setting-description">Download Arduino code template for ESP32 sensors</div>
+                </div>
+                <div class="setting-control">
+                    <button class="save-btn" onclick="downloadESP32Code()" style="margin: 0; padding: 12px 30px; font-size: 1.1rem;">&#128190; Download Code</button>
+                </div>
+            </div>
+
+            <div class="setting-row">
+                <div>
                     <div class="setting-label">System Update</div>
                     <div class="setting-description">Update to the latest version from GitHub</div>
                 </div>
@@ -2863,6 +2873,11 @@ float readTemperatureSensor() {
 
         // ==== SETUP WIZARD ====
         let wizardSelectedDevice = null;
+        
+        function downloadESP32Code() {
+            window.location.href = '/esp32-code';
+            showNotification('success', 'ESP32 code template downloaded');
+        }
         
         async function openSetupWizard() {
             document.getElementById('setupWizardModal').style.display = 'flex';

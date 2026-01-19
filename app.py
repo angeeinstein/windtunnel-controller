@@ -2146,6 +2146,18 @@ def settings():
     """Settings page."""
     return render_template('settings.html')
 
+@app.route('/esp32-code')
+def esp32_code():
+    """Serve the ESP32 code template."""
+    try:
+        with open('esp32_sensor_template.ino', 'r') as f:
+            code = f.read()
+        return Response(code, mimetype='text/plain', headers={
+            'Content-Disposition': 'attachment; filename=esp32_sensor_template.ino'
+        })
+    except Exception as e:
+        return f"Error loading ESP32 code: {str(e)}", 500
+
 @app.route('/api/sensor-types', methods=['GET'])
 def get_sensor_types():
     """Get available sensor types and their configuration requirements."""
