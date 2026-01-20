@@ -397,8 +397,11 @@ fan_state = {
     'last_heartbeat': None  # Track last client heartbeat
 }
 
+# Global PWM device to prevent garbage collection
+_pwm_device = None
+
 # Safety timeout configuration (in seconds)
-FAN_SAFETY_TIMEOUT = 10  # Stop fan if no heartbeat for 10 seconds
+FAN_SAFETY_TIMEOUT = 0  # Disabled - set to positive value to enable auto-stop
 
 available_sensor_libraries = {}  # Track which libraries are installed
 import importlib
@@ -694,9 +697,15 @@ def cleanup_hx711(sensor):
 
 def init_fan_pwm():
     """Initialize PWM for fan control"""
-    global fan_state
+    global fan_state, _pwm_device
     try:
         from gpiozero import PWMOutputDevice
+        
+        # If already initialized, return success
+        if _pwm_device is not None:
+            print("✓ PWM already initialized")
+            fan_state['pwm_instance'] = _pwm_device
+            return True
         
         pin = fan_state['pwm_pin']
         
@@ -705,12 +714,12 @@ def init_fan_pwm():
         # Initialize PWM with gpiozero (GPIO12)
         # Using 2kHz frequency (good for most 0-10V PWM modules and fans)
         # Let gpiozero auto-detect the best pin factory
-        pwm_device = PWMOutputDevice(pin, frequency=2000)
+        _pwm_device = PWMOutputDevice(pin, frequency=2000)
         
-        fan_state['pwm_instance'] = pwm_device
+        fan_state['pwm_instance'] = _pwm_device
         
         print(f"✓ Fan PWM initialized on GPIO{pin} at 2000Hz")
-        print(f"✓ PWM device: {pwm_device}")
+        print(f"✓ PWM device: {_pwm_device}")
         return True
     except Exception as e:
         print(f"✗ Failed to initialize fan PWM: {e}")
@@ -792,7 +801,7 @@ def check_fan_safety():
     import time
     while True:
         try:
-            if fan_state['running'] and fan_state['last_heartbeat'] is not None:
+            if FAN_SAFETY_TIMEOUT > 0 and fan_state['running'] and fan_state['last_heartbeat'] is not None:
                 time_since_heartbeat = time.time() - fan_state['last_heartbeat']
                 if time_since_heartbeat > FAN_SAFETY_TIMEOUT:
                     print(f"⚠️ No client heartbeat for {time_since_heartbeat:.1f}s - Emergency stopping fan")
