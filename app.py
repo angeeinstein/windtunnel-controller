@@ -762,10 +762,15 @@ def set_fan_speed(speed_percent):
         # Set PWM value
         pwm_device.value = duty_value
         
+        # Force a refresh and verify
+        import time
+        time.sleep(0.1)  # Give it a moment to settle
+        
         # Verify it's actually set
         print(f"PWM device after: {pwm_device}")
         print(f"PWM value readback: {pwm_device.value}")
         print(f"PWM is_active: {pwm_device.is_active}")
+        print(f"PWM pin state: {pwm_device.pin.state}")
         
         fan_state['running'] = (speed_percent > 0)
         fan_state['speed'] = speed_percent
@@ -776,7 +781,6 @@ def set_fan_speed(speed_percent):
         print(f"❌ Error setting fan speed: {e}")
         import traceback
         traceback.print_exc()
-        return False
         return False
 
 def cleanup_fan_pwm():
