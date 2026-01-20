@@ -699,7 +699,7 @@ def init_fan_pwm():
     """Initialize PWM for fan control"""
     global fan_state, _pwm_device
     try:
-        from gpiozero import PWMOutputDevice
+        from gpiozero import PWMOutputDevice, Device
         
         # If already initialized, return success
         if _pwm_device is not None:
@@ -720,6 +720,8 @@ def init_fan_pwm():
         
         print(f"✓ Fan PWM initialized on GPIO{pin} at 2000Hz")
         print(f"✓ PWM device: {_pwm_device}")
+        print(f"✓ Pin factory: {Device.pin_factory}")
+        print(f"✓ Pin class: {_pwm_device.pin.__class__.__name__}")
         return True
     except Exception as e:
         print(f"✗ Failed to initialize fan PWM: {e}")
