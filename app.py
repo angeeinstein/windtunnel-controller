@@ -731,7 +731,7 @@ def set_fan_speed(speed_percent):
                 return False
         
         pwm_device = fan_state['pwm_instance']
-        print(f"PWM device: {pwm_device}")
+        print(f"PWM device before: {pwm_device}")
         
         # Clamp speed to 0-100
         speed_percent = max(0, min(100, speed_percent))
@@ -743,6 +743,11 @@ def set_fan_speed(speed_percent):
         
         # Set PWM value
         pwm_device.value = duty_value
+        
+        # Verify it's actually set
+        print(f"PWM device after: {pwm_device}")
+        print(f"PWM value readback: {pwm_device.value}")
+        print(f"PWM is_active: {pwm_device.is_active}")
         
         fan_state['running'] = (speed_percent > 0)
         fan_state['speed'] = speed_percent
