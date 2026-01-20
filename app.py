@@ -700,7 +700,6 @@ def init_fan_pwm():
     global fan_state, _pwm_device
     try:
         from gpiozero import PWMOutputDevice, Device
-        from gpiozero.pins.pigpio import PiGPIOFactory
         
         # If already initialized, return success
         if _pwm_device is not None:
@@ -712,12 +711,13 @@ def init_fan_pwm():
         
         print(f"🔧 Initializing PWM on GPIO{pin}...")
         
-        # Force pigpio for hardware PWM (more reliable under load)
+        # Try to use pigpio for hardware PWM (more reliable under load)
         try:
+            from gpiozero.pins.pigpio import PiGPIOFactory
             Device.pin_factory = PiGPIOFactory()
             print(f"✓ Using pigpio for hardware PWM")
-        except:
-            print(f"⚠️  pigpio not available, using default factory")
+        except Exception as e:
+            print(f"⚠️  pigpio not available ({e}), using default lgpio")
         
         # Initialize PWM with gpiozero (GPIO12)
         # Using 2kHz frequency (good for most 0-10V PWM modules and fans)
