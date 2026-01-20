@@ -696,11 +696,16 @@ def init_fan_pwm():
     """Initialize PWM for fan control"""
     global fan_state
     try:
-        from gpiozero import PWMOutputDevice
+        from gpiozero import PWMOutputDevice, Device
+        from gpiozero.pins.rpigpio import RPiGPIOFactory
+        
+        # Force using RPi.GPIO backend (same as standalone script)
+        Device.pin_factory = RPiGPIOFactory()
         
         pin = fan_state['pwm_pin']
         
         print(f"🔧 Initializing PWM on GPIO{pin}...")
+        print(f"🔧 Pin factory: {Device.pin_factory}")
         
         # Initialize PWM with gpiozero (GPIO12)
         # Using 2kHz frequency (good for most 0-10V PWM modules and fans)
