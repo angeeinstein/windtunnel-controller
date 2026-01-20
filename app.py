@@ -696,27 +696,17 @@ def init_fan_pwm():
     """Initialize PWM for fan control"""
     global fan_state
     try:
-        import lgpio
+        from gpiozero import PWMOutputDevice
         
         pin = fan_state['pwm_pin']
         
-        # Open GPIO chip
-        handle = lgpio.gpiochip_open(0)
+        # Initialize PWM with gpiozero (GPIO18 = Pin 12)
+        # Using 2kHz frequency (good for most 0-10V PWM modules and fans)
+        pwm_device = PWMOutputDevice(pin, frequency=2000)
         
-        # Set pin as output
-        lgpio.gpio_claim_output(handle, pin)
+        fan_state['pwm_instance'] = pwm_device
         
-        # Initialize PWM at 25kHz (typical for 0-10V dimmer modules)
-        # Most 0-10V PWM modules work well with 1-25kHz
-        frequency = 1000  # 1kHz
-        
-        fan_state['pwm_instance'] = {
-            'handle': handle,
-            'pin': pin,
-            'frequency': frequency
-        }
-        
-        print(f"✓ Fan PWM initialized on GPIO{pin} (Pin 12) at {frequency}Hz")
+        print(f"✓ Fan PWM initialized on GPIO{pin} (Pin 12) at 2000Hz")
         return True
     except Exception as e:
         print(f"✗ Failed to initialize fan PWM: {e}")
@@ -726,34 +716,24 @@ def set_fan_speed(speed_percent):
     """Set fan speed (0-100%)"""
     global fan_state
     try:
-        import lgpio
-        
         if fan_state['pwm_instance'] is None:
             if not init_fan_pwm():
                 return False
         
-        pwm = fan_state['pwm_instance']
-        handle = pwm['handle']
-        pin = pwm['pin']
-        frequency = pwm['frequency']
+        pwm_device = fan_state['pwm_instance']
         
         # Clamp speed to 0-100
         speed_percent = max(0, min(100, speed_percent))
         
-        # Calculate duty cycle (0-100% maps to 0-100% duty cycle)
-        duty_cycle = speed_percent
+        # Convert percentage to 0.0-1.0 range for gpiozero
+        duty_value = speed_percent / 100.0
         
-        if speed_percent == 0:
-            # Turn off PWM
-            lgpio.tx_pwm(handle, pin, frequency, 0)
-            fan_state['running'] = False
-        else:
-            # Set PWM duty cycle
-            lgpio.tx_pwm(handle, pin, frequency, duty_cycle)
-            fan_state['running'] = True
+        # Set PWM value
+        pwm_device.value = duty_value
         
+        fan_state['running'] = (speed_percent > 0)
         fan_state['speed'] = speed_percent
-        print(f"Fan speed set to {speed_percent}% (duty cycle: {duty_cycle}%)")
+        print(f"Fan speed set to {speed_percent}% (PWM value: {duty_value:.2f})")
         return True
         
     except Exception as e:
