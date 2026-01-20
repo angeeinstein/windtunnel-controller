@@ -700,27 +700,37 @@ def init_fan_pwm():
         
         pin = fan_state['pwm_pin']
         
-        # Initialize PWM with gpiozero (GPIO18 = Pin 12)
+        print(f"🔧 Initializing PWM on GPIO{pin}...")
+        
+        # Initialize PWM with gpiozero (GPIO12)
         # Using 2kHz frequency (good for most 0-10V PWM modules and fans)
         pwm_device = PWMOutputDevice(pin, frequency=2000)
         
         fan_state['pwm_instance'] = pwm_device
         
-        print(f"✓ Fan PWM initialized on GPIO{pin} (Pin 12) at 2000Hz")
+        print(f"✓ Fan PWM initialized on GPIO{pin} at 2000Hz")
+        print(f"✓ PWM device: {pwm_device}")
         return True
     except Exception as e:
         print(f"✗ Failed to initialize fan PWM: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 def set_fan_speed(speed_percent):
     """Set fan speed (0-100%)"""
     global fan_state
     try:
+        print(f"🎛️  set_fan_speed called with {speed_percent}%")
+        
         if fan_state['pwm_instance'] is None:
+            print("PWM not initialized, initializing now...")
             if not init_fan_pwm():
+                print("❌ Failed to initialize PWM")
                 return False
         
         pwm_device = fan_state['pwm_instance']
+        print(f"PWM device: {pwm_device}")
         
         # Clamp speed to 0-100
         speed_percent = max(0, min(100, speed_percent))
@@ -728,16 +738,21 @@ def set_fan_speed(speed_percent):
         # Convert percentage to 0.0-1.0 range for gpiozero
         duty_value = speed_percent / 100.0
         
+        print(f"Setting PWM value to {duty_value:.2f} ({speed_percent}%)")
+        
         # Set PWM value
         pwm_device.value = duty_value
         
         fan_state['running'] = (speed_percent > 0)
         fan_state['speed'] = speed_percent
-        print(f"Fan speed set to {speed_percent}% (PWM value: {duty_value:.2f})")
+        print(f"✓ Fan speed set to {speed_percent}% (PWM value: {duty_value:.2f})")
         return True
         
     except Exception as e:
-        print(f"Error setting fan speed: {e}")
+        print(f"❌ Error setting fan speed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
         return False
 
 def cleanup_fan_pwm():
