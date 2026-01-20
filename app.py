@@ -10,6 +10,7 @@ import sys
 import sqlite3
 import socket
 import logging
+import math
 from datetime import datetime
 from threading import Lock, Thread
 
@@ -1867,20 +1868,32 @@ def generate_mock_data():
                     # Replace ^ with ** for power operation
                     eval_formula = eval_formula.replace('^', '**')
                     
-                    # Validate the formula only contains safe characters
-                    if re.match(r'^[\d\s\.\+\-\*/\(\)\*]+$', eval_formula):
-                        result = eval(eval_formula)
-                        
-                        # Check for invalid results
-                        if result is None or (isinstance(result, float) and (result != result or abs(result) == float('inf'))):
-                            print(f"Warning: Invalid result for sensor {sensor_id}: {result}")
-                            data[sensor_id] = 0
-                        else:
-                            data[sensor_id] = float(result)
-                            sensor_values[sensor_id] = float(result)  # Make available for other calculated sensors
-                    else:
-                        print(f"Warning: Invalid formula for sensor {sensor_id}: {formula}")
+                    # Create safe math context with common functions
+                    safe_math = {
+                        'sqrt': math.sqrt,
+                        'pow': math.pow,
+                        'abs': abs,
+                        'sin': math.sin,
+                        'cos': math.cos,
+                        'tan': math.tan,
+                        'log': math.log,
+                        'log10': math.log10,
+                        'exp': math.exp,
+                        'pi': math.pi,
+                        'e': math.e,
+                        '__builtins__': {}  # Restrict access to built-in functions
+                    }
+                    
+                    # Evaluate formula with safe math functions
+                    result = eval(eval_formula, safe_math)
+                    
+                    # Check for invalid results
+                    if result is None or (isinstance(result, float) and (result != result or abs(result) == float('inf'))):
+                        print(f"Warning: Invalid result for sensor {sensor_id}: {result}")
                         data[sensor_id] = 0
+                    else:
+                        data[sensor_id] = float(result)
+                        sensor_values[sensor_id] = float(result)  # Make available for other calculated sensors
                     
                     calculated_sensors.remove(sensor)
                     evaluated.add(sensor_id)
