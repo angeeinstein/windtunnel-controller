@@ -115,6 +115,8 @@ install_system_packages() {
         "libssl-dev"
         "libffi-dev"
         "python3-lgpio"
+        "pigpio"
+        "python3-pigpio"
     )
     
     # Check and install missing packages
@@ -365,7 +367,8 @@ create_service() {
     cat > "$SERVICE_FILE" <<EOF
 [Unit]
 Description=Wind Tunnel Controller Web Interface
-After=network.target
+After=network.target pigpiod.service
+Wants=pigpiod.service
 
 [Service]
 Type=simple
@@ -466,6 +469,15 @@ UDEVRULE
 # Enable and start service
 enable_service() {
     print_step "Enabling and starting service..."
+    
+    # Enable and start pigpiod daemon (required for hardware PWM)
+    print_info "Enabling pigpiod daemon for hardware PWM..."
+    systemctl enable pigpiod || {
+        print_warning "Failed to enable pigpiod (hardware PWM may not work)"
+    }
+    systemctl start pigpiod || {
+        print_warning "Failed to start pigpiod (hardware PWM may not work)"
+    }
     
     systemctl enable "$SERVICE_NAME" || {
         print_error "Failed to enable service"

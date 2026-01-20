@@ -700,6 +700,7 @@ def init_fan_pwm():
     global fan_state, _pwm_device
     try:
         from gpiozero import PWMOutputDevice, Device
+        from gpiozero.pins.pigpio import PiGPIOFactory
         
         # If already initialized, return success
         if _pwm_device is not None:
@@ -711,9 +712,15 @@ def init_fan_pwm():
         
         print(f"🔧 Initializing PWM on GPIO{pin}...")
         
+        # Force pigpio for hardware PWM (more reliable under load)
+        try:
+            Device.pin_factory = PiGPIOFactory()
+            print(f"✓ Using pigpio for hardware PWM")
+        except:
+            print(f"⚠️  pigpio not available, using default factory")
+        
         # Initialize PWM with gpiozero (GPIO12)
         # Using 2kHz frequency (good for most 0-10V PWM modules and fans)
-        # Let gpiozero auto-detect the best pin factory
         _pwm_device = PWMOutputDevice(pin, frequency=2000)
         
         fan_state['pwm_instance'] = _pwm_device
@@ -774,27 +781,16 @@ def set_fan_speed(speed_percent):
 
 def cleanup_fan_pwm():
     """Clean up fan PWM resources"""
-    global fan_state
+    global fan_state, _pwm_device
     try:
-        if fan_state['pwm_instance'] is not None:
-            import lgpio
-            pwm = fan_state['pwm_instance']
-            handle = pwm['handle']
-            pin = pwm['pin']
-            
-            # Stop PWM
-            lgpio.tx_pwm(handle, pin, 0, 0)
-            
-            # Free GPIO
-            lgpio.gpio_free(handle, pin)
-            
-            # Close chip
-            lgpio.gpiochip_close(handle)
-            
+        if _pwm_device is not None:
+            # Close gpiozero PWM device
+            _pwm_device.close()
+            _pwm_device = None
             fan_state['pwm_instance'] = None
             fan_state['running'] = False
             fan_state['speed'] = 0
-            print(f"Fan PWM cleaned up (GPIO{pin})")
+            print(f"Fan PWM cleaned up (GPIO{fan_state['pwm_pin']})")
     except Exception as e:
         print(f"Error cleaning up fan PWM: {e}")
 
