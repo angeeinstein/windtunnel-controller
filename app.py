@@ -392,7 +392,7 @@ discovery_lock = Lock()
 fan_state = {
     'running': False,
     'speed': 0,  # 0-100%
-    'pwm_pin': 18,  # GPIO18 (Pin 12) - Hardware PWM0
+    'pwm_pin': 12,  # GPIO12 (matches user's working configuration)
     'pwm_instance': None,
     'last_heartbeat': None  # Track last client heartbeat
 }
