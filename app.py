@@ -1324,6 +1324,16 @@ def auto_create_udp_sensor(sensor_id, port, source_ip):
         if sensor_id in deleted_udp_sensors:
             return
         
+        # Check if this is a composite sensor (e.g., "esp32_sensor_063C_lift")
+        # and if the base sensor or any variant was deleted
+        if '_' in sensor_id:
+            # Check all deleted sensors for matches with same base
+            base_pattern = sensor_id.rsplit('_', 1)[0]  # "esp32_sensor_063C" from "esp32_sensor_063C_lift"
+            for deleted_id in deleted_udp_sensors:
+                if deleted_id.startswith(base_pattern + '_'):
+                    # Another sensor from this device was deleted, don't auto-create this one
+                    return
+        
         # Check if sensor already exists
         sensors = current_settings.get('sensors', [])
         for sensor in sensors:
