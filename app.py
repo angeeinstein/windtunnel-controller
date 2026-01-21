@@ -3217,6 +3217,7 @@ def pid_autotune():
     try:
         data = request.get_json()
         sensor_id = data.get('sensor_id')
+        target_setpoint = data.get('setpoint', 3.5)  # Allow custom setpoint, default 3.5 m/s
         
         if not sensor_id:
             return jsonify({'status': 'error', 'error': 'Sensor ID is required'}), 400
@@ -3235,121 +3236,163 @@ def pid_autotune():
         # Start auto-tune thread
         def auto_tune_thread():
             try:
-                logger.info(f"Auto-tune started for sensor {sensor_id}")
+                logger.info(f"Auto-tune started for sensor {sensor_id}, target setpoint: {target_setpoint} m/s")
                 
-                # Relay auto-tune parameters
-                setpoint = 10.0  # Target airspeed for testing (m/s)
+                # Test multiple setpoints for more robust tuning
+                # Use 70%, 85%, and 100% of target setpoint
+                test_setpoints = [
+                    target_setpoint * 0.7,
+                    target_setpoint * 0.85,
+                    target_setpoint
+                ]
+                
+                all_periods = []
+                all_amplitudes = []
+                all_ku_values = []
+                
+                # Relay auto-tune parameters (configurable)
                 relay_amplitude = 20.0  # Fan speed variation (+/- 20%)
-                base_speed = 50.0  # Base fan speed (%)
-                max_cycles = 10  # Number of oscillation cycles to measure
-                timeout = 300  # 5 minute timeout
+                min_cycles = 5  # Minimum cycles per setpoint for accuracy
+                max_cycles = 12  # Maximum cycles per setpoint
+                timeout_per_setpoint = 150  # 2.5 minutes per setpoint
+                min_time_per_setpoint = 30  # Minimum 30 seconds per setpoint
                 
-                start_time = time.time()
-                oscillation_periods = []
-                oscillation_amplitudes = []
+                total_cycles_completed = 0
                 
-                last_airspeed = None
-                crossing_times = []
-                last_state = None  # 'high' or 'low'
-                
-                logger.info(f"Auto-tune: Setting fan to base speed {base_speed}%")
-                set_fan_speed(base_speed)
-                time.sleep(2)  # Let system stabilize
-                
-                cycle_count = 0
-                samples = []
-                
-                while cycle_count < max_cycles and (time.time() - start_time) < timeout:
+                for setpoint_idx, setpoint in enumerate(test_setpoints):
                     if not pid_state.get('auto_tuning'):
                         logger.info("Auto-tune cancelled")
                         set_fan_speed(0)
                         return
                     
-                    # Read current airspeed
-                    try:
-                        conn = sqlite3.connect(DB_FILE)
-                        cursor = conn.cursor()
-                        cursor.execute("""
-                            SELECT value FROM sensor_data 
-                            WHERE sensor_id = ? 
-                            ORDER BY timestamp DESC 
-                            LIMIT 1
-                        """, (sensor_id,))
-                        result = cursor.fetchone()
-                        conn.close()
+                    logger.info(f"Auto-tune: Testing setpoint {setpoint:.2f} m/s ({setpoint_idx + 1}/{len(test_setpoints)})")
+                    
+                    # Calculate base speed for this setpoint (rough estimate)
+                    base_speed = min(80.0, max(30.0, setpoint / target_setpoint * 50.0))
+                    
+                    start_time = time.time()
+                    oscillation_periods = []
+                    oscillation_amplitudes = []
+                    
+                    last_airspeed = None
+                    crossing_times = []
+                    
+                    logger.info(f"Auto-tune: Setting fan to base speed {base_speed:.0f}%")
+                    set_fan_speed(base_speed)
+                    time.sleep(3)  # Let system stabilize
+                    
+                    cycle_count = 0
+                    samples = []
+                    
+                    elapsed_time = 0
+                    while cycle_count < max_cycles and elapsed_time < timeout_per_setpoint:
+                        elapsed_time = time.time() - start_time
                         
-                        if result:
-                            current_airspeed = float(result[0])
-                        else:
-                            current_airspeed = 0.0
-                    except:
-                        current_airspeed = 0.0
+                        if not pid_state.get('auto_tuning'):
+                            logger.info("Auto-tune cancelled")
+                            set_fan_speed(0)
+                            return
+                        
+                        # After minimum time, allow early exit if we have enough data
+                        if elapsed_time > min_time_per_setpoint and cycle_count >= min_cycles:
+                            logger.info(f"Auto-tune: Collected sufficient data for setpoint {setpoint:.2f} ({cycle_count} cycles)")
+                            break
+                        logger.info("Auto-tune cancelled")
+                        set_fan_speed(0)
+                        return
                     
-                    samples.append(current_airspeed)
-                    
-                    # Relay logic: switch fan speed based on error
-                    error = setpoint - current_airspeed
-                    
-                    if error > 0:
-                        # Below setpoint, increase fan
-                        fan_speed = base_speed + relay_amplitude
-                        current_state = 'high'
-                    else:
-                        # Above setpoint, decrease fan
-                        fan_speed = base_speed - relay_amplitude
-                        current_state = 'low'
-                    
-                    set_fan_speed(max(15.0, min(100.0, fan_speed)))
-                    
-                    # Detect zero crossings (when error changes sign)
-                    if last_airspeed is not None:
-                        last_error = setpoint - last_airspeed
-                        if (last_error > 0 and error < 0) or (last_error < 0 and error > 0):
-                            crossing_times.append(time.time())
+                        # Read current airspeed
+                        try:
+                            conn = sqlite3.connect(DB_FILE)
+                            cursor = conn.cursor()
+                            cursor.execute("""
+                                SELECT value FROM sensor_data 
+                                WHERE sensor_id = ? 
+                                ORDER BY timestamp DESC 
+                                LIMIT 1
+                            """, (sensor_id,))
+                            result = cursor.fetchone()
+                            conn.close()
                             
-                            # Calculate period from last two crossings
-                            if len(crossing_times) >= 3:
-                                period = crossing_times[-1] - crossing_times[-3]
-                                oscillation_periods.append(period)
+                            if result:
+                                current_airspeed = float(result[0])
+                            else:
+                                current_airspeed = 0.0
+                        except:
+                            current_airspeed = 0.0
+                        
+                        samples.append(current_airspeed)
+                        
+                        # Relay logic: switch fan speed based on error
+                        error = setpoint - current_airspeed
+                        
+                        if error > 0:
+                            # Below setpoint, increase fan
+                            fan_speed = base_speed + relay_amplitude
+                        else:
+                            # Above setpoint, decrease fan
+                            fan_speed = base_speed - relay_amplitude
+                        
+                        set_fan_speed(max(15.0, min(100.0, fan_speed)))
+                        
+                        # Detect zero crossings (when error changes sign)
+                        if last_airspeed is not None:
+                            last_error = setpoint - last_airspeed
+                            if (last_error > 0 and error < 0) or (last_error < 0 and error > 0):
+                                crossing_times.append(time.time())
                                 
-                                # Calculate amplitude from recent samples
-                                if len(samples) >= 20:
-                                    recent_samples = samples[-20:]
-                                    amplitude = (max(recent_samples) - min(recent_samples)) / 2
-                                    oscillation_amplitudes.append(amplitude)
-                                
-                                cycle_count += 1
-                                pid_state['auto_tune_cycles'] = cycle_count
-                                logger.info(f"Auto-tune cycle {cycle_count}: Period={period:.2f}s, Amplitude={amplitude:.2f} m/s")
+                                # Calculate period from last two crossings
+                                if len(crossing_times) >= 3:
+                                    period = crossing_times[-1] - crossing_times[-3]
+                                    oscillation_periods.append(period)
+                                    
+                                    # Calculate amplitude from recent samples
+                                    if len(samples) >= 20:
+                                        recent_samples = samples[-20:]
+                                        amplitude = (max(recent_samples) - min(recent_samples)) / 2
+                                        oscillation_amplitudes.append(amplitude)
+                                    
+                                    cycle_count += 1
+                                    total_cycles_completed += 1
+                                    pid_state['auto_tune_cycles'] = total_cycles_completed
+                                    logger.info(f"Auto-tune cycle {cycle_count} (total {total_cycles_completed}): Period={period:.2f}s, Amplitude={amplitude:.2f} m/s")
+                        
+                        last_airspeed = current_airspeed
+                        time.sleep(0.1)  # Sample at 10 Hz
                     
-                    last_airspeed = current_airspeed
-                    last_state = current_state
-                    time.sleep(0.1)  # Sample at 10 Hz
+                    # Store results from this setpoint
+                    if len(oscillation_periods) > 0 and len(oscillation_amplitudes) > 0:
+                        avg_period = sum(oscillation_periods) / len(oscillation_periods)
+                        avg_amplitude = sum(oscillation_amplitudes) / len(oscillation_amplitudes)
+                        ku = 4.0 * relay_amplitude / (math.pi * avg_amplitude) if avg_amplitude > 0 else 0
+                        
+                        all_periods.append(avg_period)
+                        all_amplitudes.append(avg_amplitude)
+                        all_ku_values.append(ku)
+                        
+                        logger.info(f"Setpoint {setpoint:.2f} results: Ku={ku:.2f}, Tu={avg_period:.2f}s")
                 
                 # Stop fan
                 set_fan_speed(0)
                 
-                if len(oscillation_periods) < 2:
-                    logger.error("Auto-tune failed: Not enough oscillation data")
+                if len(all_ku_values) < 1:
+                    logger.error("Auto-tune failed: Not enough oscillation data collected")
+                    logger.info(f"Completed {total_cycles_completed} cycles across {len(all_ku_values)} setpoints")
                     pid_state['auto_tuning'] = False
                     return
                 
-                # Calculate average oscillation characteristics
-                avg_period = sum(oscillation_periods) / len(oscillation_periods)
-                avg_amplitude = sum(oscillation_amplitudes) / len(oscillation_amplitudes)
+                # Calculate average system characteristics from all test points
+                avg_ku = sum(all_ku_values) / len(all_ku_values)
+                avg_tu = sum(all_periods) / len(all_periods)
                 
-                # Calculate ultimate gain (Ku) and period (Tu)
-                ku = 4.0 * relay_amplitude / (math.pi * avg_amplitude)  # Relay method formula
-                tu = avg_period
-                
-                logger.info(f"Auto-tune measurements: Ku={ku:.2f}, Tu={tu:.2f}s")
+                logger.info(f"Auto-tune measurements from {len(all_ku_values)} setpoints: Ku={avg_ku:.2f}, Tu={avg_tu:.2f}s")
                 
                 # Ziegler-Nichols PID tuning rules
-                pid_state['auto_tune_kp'] = 0.6 * ku
-                pid_state['auto_tune_ki'] = 1.2 * ku / tu
-                pid_state['auto_tune_kd'] = 0.075 * ku * tu
+                pid_state['auto_tune_kp'] = 0.6 * avg_ku
+                pid_state['auto_tune_ki'] = 1.2 * avg_ku / avg_tu
+                pid_state['auto_tune_kd'] = 0.075 * avg_ku * avg_tu
                 
-                logger.info(f"Auto-tune complete: Kp={pid_state['auto_tune_kp']:.2f}, Ki={pid_state['auto_tune_ki']:.3f}, Kd={pid_state['auto_tune_kd']:.3f}")
+                logger.info(f"Auto-tune complete: Kp={pid_state['auto_tune_kp']:.2f}, Ki={pid_state['auto_tune_ki']:.3f}, Kd={pid_state['auto_tune_kd']:.3f} (from {total_cycles_completed} total cycles)")
                 
             except Exception as e:
                 logger.error(f"Auto-tune error: {e}")
@@ -3370,6 +3413,19 @@ def pid_autotune():
     except Exception as e:
         logger.error(f"Error starting auto-tune: {e}")
         pid_state['auto_tuning'] = False
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/pid/autotune/stop', methods=['POST'])
+def pid_autotune_stop():
+    """Stop auto-tuning"""
+    global pid_state
+    try:
+        pid_state['auto_tuning'] = False
+        set_fan_speed(0)
+        logger.info("Auto-tune stopped by user")
+        return jsonify({'status': 'success', 'message': 'Auto-tune stopped'})
+    except Exception as e:
+        logger.error(f"Error stopping auto-tune: {e}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 @app.route('/api/internet/check', methods=['GET'])

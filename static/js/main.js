@@ -1130,6 +1130,19 @@ async function startFan() {
 
 async function stopFan() {
     try {
+        // Stop auto-tune if running
+        if (window.pidAutoTuning) {
+            await fetch('/api/pid/autotune/stop', { method: 'POST' });
+        }
+        
+        // Stop PID if running
+        try {
+            await fetch('/api/pid/stop', { method: 'POST' });
+        } catch (e) {
+            // Ignore if PID endpoint fails
+        }
+        
+        // Stop fan
         const response = await fetch('/api/fan/stop', {
             method: 'POST'
         });
@@ -1138,11 +1151,16 @@ async function stopFan() {
         if (data.status === 'success') {
             updateFanStatus(false, 0);
         } else {
-            alert('Failed to stop fan: ' + data.message);
+            alert('Failed to stop fan: ' + (data.message || data.error || 'Unknown error'));
         }
     } catch (error) {
         console.error('Error stopping fan:', error);
-        alert('Failed to stop fan: ' + error.message);
+        // Try direct GPIO stop as fallback
+        try {
+            await fetch('/api/fan/stop', { method: 'POST' });
+        } catch (e) {
+            alert('Failed to stop fan: ' + error.message);
+        }
     }
 }
 

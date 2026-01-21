@@ -3039,9 +3039,15 @@ float readTemperatureSensor() {
         
         async function startAutoTune() {
             const sensorId = document.getElementById('pidSensorId').value;
+            const setpoint = parseFloat(document.getElementById('autoTuneSetpoint').value);
             
             if (!sensorId) {
                 showNotification('Error', 'Please select an airspeed sensor first', 'error');
+                return;
+            }
+            
+            if (isNaN(setpoint) || setpoint <= 0) {
+                showNotification('Error', 'Please enter a valid setpoint', 'error');
                 return;
             }
             
@@ -3051,17 +3057,20 @@ float readTemperatureSensor() {
             document.getElementById('autoTuneBtn').disabled = true;
             document.getElementById('autoTuneBtn').textContent = 'Auto-Tuning...';
             
+            // Track that auto-tune is running
+            window.pidAutoTuning = true;
+            
             try {
                 const response = await fetch('/api/pid/autotune', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ sensor_id: sensorId })
+                    body: JSON.stringify({ sensor_id: sensorId, setpoint: setpoint })
                 });
                 
                 const result = await response.json();
                 
                 if (result.status === 'started') {
-                    showNotification('Info', 'Auto-tune started. This will take 2-5 minutes...', 'info');
+                    showNotification('Info', `Auto-tune started at ${setpoint} m/s. Testing 3 different speeds with 5+ cycles each. This will take 3-5 minutes. Fan will oscillate to measure system response.`, 'info');
                     
                     // Poll for status
                     autoTuneInterval = setInterval(checkAutoTuneStatus, 2000);
@@ -3075,6 +3084,7 @@ float readTemperatureSensor() {
                 document.getElementById('autoTuneStatus').style.display = 'none';
                 document.getElementById('autoTuneBtn').disabled = false;
                 document.getElementById('autoTuneBtn').textContent = 'Start Auto-Tune';
+                window.pidAutoTuning = false;
             }
         }
         
@@ -3090,6 +3100,7 @@ float readTemperatureSensor() {
                     // Auto-tune complete
                     clearInterval(autoTuneInterval);
                     autoTuneInterval = null;
+                    window.pidAutoTuning = false;
                     
                     if (status.kp && status.ki && status.kd) {
                         // Update fields with new values
@@ -3113,6 +3124,7 @@ float readTemperatureSensor() {
             } catch (error) {
                 clearInterval(autoTuneInterval);
                 autoTuneInterval = null;
+                window.pidAutoTuning = false;
                 document.getElementById('autoTuneStatus').style.display = 'none';
                 document.getElementById('autoTuneBtn').disabled = false;
                 document.getElementById('autoTuneBtn').textContent = 'Start Auto-Tune';
@@ -3867,6 +3879,11 @@ float readTemperatureSensor() {
                                 <div style="font-weight: bold; color: var(--text-primary);">Auto-Tune PID Parameters</div>
                                 <div style="color: var(--text-secondary); font-size: 0.9rem;">Automatically determine optimal PID values using relay method</div>
                             </div>
+                        </div>
+                        <div style="margin-bottom: 10px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold; color: var(--text-primary);">Target Setpoint (m/s)</label>
+                            <input type="number" id="autoTuneSetpoint" step="0.5" min="1" max="30" value="3.5" style="width: 100%; padding: 8px; border: 2px solid var(--border-color); border-radius: 6px; font-size: 1rem; background: white; color: #333;">
+                            <small style="color: var(--text-secondary); display: block; margin-top: 5px;">💡 Adjust based on your sensor's working range (currently 3.5 m/s for sensor testing)</small>
                         </div>
                         <button onclick="startAutoTune()" class="save-btn" style="width: 100%; padding: 12px; background: var(--accent-color); margin-top: 0;" id="autoTuneBtn">
                             Start Auto-Tune
