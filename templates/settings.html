@@ -2923,16 +2923,16 @@ float readTemperatureSensor() {
             
             // Load current settings
             try {
-                const response = await fetch('/api/pid/config');
+                const response = await fetch('/api/pid/settings');
                 const config = await response.json();
                 
-                document.getElementById('pidKp').value = config.Kp || 5.0;
-                document.getElementById('pidKi').value = config.Ki || 0.5;
-                document.getElementById('pidKd').value = config.Kd || 0.1;
-                document.getElementById('pidMinSpeed').value = config.min_speed || 15;
+                document.getElementById('pidKp').value = config.kp || 5.0;
+                document.getElementById('pidKi').value = config.ki || 0.5;
+                document.getElementById('pidKd').value = config.kd || 0.1;
+                document.getElementById('pidMinSpeed').value = config.min_fan_speed || 15;
                 
                 // Load airspeed sensors
-                await loadAirspeedSensors(config.sensor_id);
+                await loadAirspeedSensors(config.airspeed_sensor_id);
                 
             } catch (error) {
                 showNotification('Error', 'Failed to load PID settings: ' + error.message, 'error');
@@ -2980,37 +2980,37 @@ float readTemperatureSensor() {
         
         async function saveFanPIDSettings() {
             const config = {
-                Kp: parseFloat(document.getElementById('pidKp').value),
-                Ki: parseFloat(document.getElementById('pidKi').value),
-                Kd: parseFloat(document.getElementById('pidKd').value),
-                min_speed: parseFloat(document.getElementById('pidMinSpeed').value),
-                sensor_id: document.getElementById('pidSensorId').value
+                kp: parseFloat(document.getElementById('pidKp').value),
+                ki: parseFloat(document.getElementById('pidKi').value),
+                kd: parseFloat(document.getElementById('pidKd').value),
+                min_fan_speed: parseFloat(document.getElementById('pidMinSpeed').value),
+                airspeed_sensor_id: document.getElementById('pidSensorId').value
             };
             
             // Validation
-            if (isNaN(config.Kp) || config.Kp < 0) {
+            if (isNaN(config.kp) || config.kp < 0) {
                 showNotification('Error', 'Invalid Kp value', 'error');
                 return;
             }
-            if (isNaN(config.Ki) || config.Ki < 0) {
+            if (isNaN(config.ki) || config.ki < 0) {
                 showNotification('Error', 'Invalid Ki value', 'error');
                 return;
             }
-            if (isNaN(config.Kd) || config.Kd < 0) {
+            if (isNaN(config.kd) || config.kd < 0) {
                 showNotification('Error', 'Invalid Kd value', 'error');
                 return;
             }
-            if (isNaN(config.min_speed) || config.min_speed < 0 || config.min_speed > 100) {
+            if (isNaN(config.min_fan_speed) || config.min_fan_speed < 0 || config.min_fan_speed > 100) {
                 showNotification('Error', 'Min speed must be between 0 and 100%', 'error');
                 return;
             }
-            if (!config.sensor_id) {
+            if (!config.airspeed_sensor_id) {
                 showNotification('Error', 'Please select an airspeed sensor', 'error');
                 return;
             }
             
             try {
-                const response = await fetch('/api/pid/config', {
+                const response = await fetch('/api/pid/settings', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(config)
@@ -3086,14 +3086,14 @@ float readTemperatureSensor() {
                     clearInterval(autoTuneInterval);
                     autoTuneInterval = null;
                     
-                    if (status.Kp && status.Ki && status.Kd) {
+                    if (status.kp && status.ki && status.kd) {
                         // Update fields with new values
-                        document.getElementById('pidKp').value = status.Kp.toFixed(2);
-                        document.getElementById('pidKi').value = status.Ki.toFixed(3);
-                        document.getElementById('pidKd').value = status.Kd.toFixed(3);
+                        document.getElementById('pidKp').value = status.kp.toFixed(2);
+                        document.getElementById('pidKi').value = status.ki.toFixed(3);
+                        document.getElementById('pidKd').value = status.kd.toFixed(3);
                         
                         document.getElementById('autoTuneProgress').textContent = 
-                            `✅ Complete! Kp=${status.Kp.toFixed(2)}, Ki=${status.Ki.toFixed(3)}, Kd=${status.Kd.toFixed(3)}`;
+                            `✅ Complete! Kp=${status.kp.toFixed(2)}, Ki=${status.ki.toFixed(3)}, Kd=${status.kd.toFixed(3)}`;
                         
                         showNotification('Success', 'Auto-tune complete! Review and save the new parameters.', 'success');
                     } else {
