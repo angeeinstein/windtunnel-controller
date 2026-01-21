@@ -1552,7 +1552,20 @@ def send_esp32_command(ip, endpoint, data=None, timeout=5):
     except requests.exceptions.ConnectionError:
         return {'status': 'error', 'error': f'Cannot connect to device at {ip}'}
     except requests.exceptions.HTTPError as e:
-        return {'status': 'error', 'error': f'HTTP error: {e}'}
+        # Try to parse error message from ESP32 response
+        try:
+            error_data = e.response.json()
+            # ESP32 may return error in various fields
+            device_error = error_data.get('error') or error_data.get('message') or str(e)
+            return {
+                'status': 'error',
+                'error': f'HTTP {e.response.status_code}',
+                'device_error': device_error,
+                'details': error_data.get('details')
+            }
+        except:
+            # If can't parse JSON, use the HTTP error
+            return {'status': 'error', 'error': f'HTTP error: {e}'}
     except Exception as e:
         return {'status': 'error', 'error': str(e)}
 

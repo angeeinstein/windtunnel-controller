@@ -2795,7 +2795,18 @@ float readTemperatureSensor() {
                         closeESP32Control();
                     }
                 } else {
-                    showNotification('Command Failed', result.error || 'ESP32 did not respond correctly', 'error');
+                    // Show detailed error from ESP32 if available
+                    let errorMessage = result.error || result.message || 'ESP32 did not respond correctly';
+                    
+                    // If there's device_error from the ESP32, show that prominently
+                    if (result.device_error) {
+                        errorMessage = `ESP32 Error: ${result.device_error}`;
+                        if (result.details) {
+                            errorMessage += `\n\nDetails: ${result.details}`;
+                        }
+                    }
+                    
+                    showNotification('Command Failed', errorMessage, 'error');
                 }
                 
             } catch (error) {
@@ -3550,9 +3561,9 @@ float readTemperatureSensor() {
     <!-- ESP32 Control Modal -->
     <div id="esp32ControlModal" class="sensor-modal" style="display: none;">
         <div class="sensor-modal-content" style="max-width: 600px;">
-            <div class="sensor-modal-header">
-                <h2>&#128268; ESP32 Control</h2>
-                <button class="graph-close-btn" onclick="closeESP32Control()" style="width: 40px; height: 40px;">
+            <div class="sensor-modal-header" style="display: flex; justify-content: space-between; align-items: center; padding: 20px; border-bottom: 2px solid var(--border-color);">
+                <h2 style="margin: 0;">&#128268; ESP32 Control</h2>
+                <button class="graph-close-btn" onclick="closeESP32Control()" style="width: 40px; height: 40px; flex-shrink: 0;">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <line x1="18" y1="6" x2="6" y2="18"></line>
                         <line x1="6" y1="6" x2="18" y2="18"></line>
