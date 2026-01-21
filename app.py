@@ -2974,7 +2974,7 @@ def list_usb_drives():
 
 @app.route('/api/export/data', methods=['POST'])
 def export_data():
-    """Export sensor data to CSV file on USB drive."""
+    """Export sensor data to CSV file on USB drive in wide format (one column per sensor)."""
     try:
         data = request.get_json()
         drive_path = data.get('drive_path')
@@ -2988,23 +2988,59 @@ def export_data():
         filename = f'windtunnel_data_{timestamp}.csv'
         filepath = os.path.join(drive_path, filename)
         
-        # Query all data from database
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
         
-        cursor.execute('''
-            SELECT timestamp, sensor_id, value 
-            FROM sensor_data 
-            ORDER BY timestamp ASC
-        ''')
+        # Get all unique sensor IDs
+        cursor.execute('SELECT DISTINCT sensor_id FROM sensor_data ORDER BY sensor_id')
+        sensor_ids = [row[0] for row in cursor.fetchall()]
         
-        rows = cursor.fetchall()
+        if not sensor_ids:
+            conn.close()
+            return jsonify({'status': 'error', 'message': 'No data to export'}), 400
         
-        # Write to CSV file
+        # Get all unique timestamps
+        cursor.execute('SELECT DISTINCT timestamp FROM sensor_data ORDER BY timestamp')
+        timestamps = [row[0] for row in cursor.fetchall()]
+        
+        # Write CSV with wide format
         with open(filepath, 'w', newline='') as csvfile:
             csv_writer = csv.writer(csvfile)
-            csv_writer.writerow(['Timestamp', 'Sensor ID', 'Value'])
-            csv_writer.writerows(rows)
+            
+            # Write header: Timestamp, Sensor1, Sensor2, ...
+            csv_writer.writerow(['Timestamp'] + sensor_ids)
+            
+            # Process in chunks to handle large datasets
+            chunk_size = 1000
+            total_rows = 0
+            
+            for i in range(0, len(timestamps), chunk_size):
+                chunk_timestamps = timestamps[i:i + chunk_size]
+                
+                # Get all data for this chunk of timestamps
+                placeholders = ','.join('?' * len(chunk_timestamps))
+                cursor.execute(f'''
+                    SELECT timestamp, sensor_id, value 
+                    FROM sensor_data 
+                    WHERE timestamp IN ({placeholders})
+                    ORDER BY timestamp, sensor_id
+                ''', chunk_timestamps)
+                
+                # Build data structure: {timestamp: {sensor_id: value}}
+                data_by_timestamp = {}
+                for ts, sensor_id, value in cursor.fetchall():
+                    if ts not in data_by_timestamp:
+                        data_by_timestamp[ts] = {}
+                    data_by_timestamp[ts][sensor_id] = value
+                
+                # Write rows for this chunk
+                for ts in chunk_timestamps:
+                    row = [ts]
+                    sensor_data = data_by_timestamp.get(ts, {})
+                    for sensor_id in sensor_ids:
+                        row.append(sensor_data.get(sensor_id, ''))  # Empty string if no data
+                    csv_writer.writerow(row)
+                    total_rows += 1
         
         conn.close()
         
@@ -3013,7 +3049,8 @@ def export_data():
             'message': 'Data exported successfully',
             'filename': filename,
             'filepath': filepath,
-            'rows_exported': len(rows)
+            'rows_exported': total_rows,
+            'columns': len(sensor_ids) + 1  # +1 for timestamp column
         })
     except PermissionError:
         return jsonify({'status': 'error', 'message': 'Permission denied. Drive may be read-only.'}), 500
