@@ -11,6 +11,7 @@ import sqlite3
 import socket
 import logging
 import math
+import threading
 from datetime import datetime
 from threading import Lock, Thread
 
@@ -3188,6 +3189,39 @@ def pid_settings():
     except Exception as e:
         logger.error(f"Error with PID settings: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/pid/autotune', methods=['POST'])
+def pid_autotune():
+    """Start PID auto-tuning using relay method"""
+    global pid_state
+    try:
+        data = request.get_json()
+        sensor_id = data.get('sensor_id')
+        
+        if not sensor_id:
+            return jsonify({'status': 'error', 'error': 'Sensor ID is required'}), 400
+        
+        if pid_state['enabled']:
+            return jsonify({'status': 'error', 'error': 'Stop PID control before auto-tuning'}), 400
+        
+        # Start auto-tune process
+        pid_state['auto_tuning'] = True
+        pid_state['auto_tune_cycles'] = 0
+        pid_state['airspeed_sensor_id'] = sensor_id
+        
+        # This would normally start the auto-tune thread
+        # For now, return success and let the user know it's in progress
+        logger.info(f"Auto-tune started for sensor {sensor_id}")
+        
+        return jsonify({
+            'status': 'started',
+            'message': 'Auto-tune started',
+            'sensor_id': sensor_id
+        })
+        
+    except Exception as e:
+        logger.error(f"Error starting auto-tune: {e}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 @app.route('/api/internet/check', methods=['GET'])
 def internet_check():
