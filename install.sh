@@ -372,7 +372,8 @@ Type=simple
 User=root
 WorkingDirectory=$INSTALL_DIR
 Environment="PATH=$VENV_DIR/bin"
-ExecStart=$VENV_DIR/bin/gunicorn --worker-class eventlet --workers 1 --bind 0.0.0.0:80 --config python:app app:app
+Environment="FLASK_APP=app.py"
+ExecStart=$VENV_DIR/bin/python3 app.py
 Restart=always
 RestartSec=10
 StandardOutput=journal
@@ -425,7 +426,8 @@ Type=simple
 User=root
 WorkingDirectory=$INSTALL_DIR
 Environment="PATH=$VENV_DIR/bin"
-ExecStart=$VENV_DIR/bin/gunicorn --worker-class eventlet --workers 1 --bind 0.0.0.0:80 --config python:app app:app
+Environment="FLASK_APP=app.py"
+ExecStart=$VENV_DIR/bin/python3 app.py
 Restart=always
 RestartSec=10
 StandardOutput=journal
