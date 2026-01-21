@@ -1181,6 +1181,131 @@ async function loadFanStatus() {
     }
 }
 
+// ==== PID CONTROL ====
+
+function updateTargetDisplay(value) {
+    document.getElementById('targetValue').textContent = parseFloat(value).toFixed(1);
+}
+
+async function startPID() {
+    const targetSpeed = parseFloat(document.getElementById('targetAirspeed').value);
+    
+    if (isNaN(targetSpeed) || targetSpeed < 0) {
+        alert('Please enter a valid target airspeed');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/pid/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ target_speed: targetSpeed })
+        });
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            updatePIDStatus(true);
+        } else {
+            alert('Failed to start PID control: ' + (data.error || 'Unknown error'));
+        }
+    } catch (error) {
+        console.error('Error starting PID:', error);
+        alert('Failed to start PID control: ' + error.message);
+    }
+}
+
+async function stopPID() {
+    try {
+        const response = await fetch('/api/pid/stop', {
+            method: 'POST'
+        });
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            updatePIDStatus(false);
+        } else {
+            alert('Failed to stop PID control: ' + (data.error || 'Unknown error'));
+        }
+    } catch (error) {
+        console.error('Error stopping PID:', error);
+        alert('Failed to stop PID control: ' + error.message);
+    }
+}
+
+function updatePIDStatus(isRunning, data = {}) {
+    const indicator = document.getElementById('pidIndicator');
+    const statusText = document.getElementById('pidStatusText');
+    
+    if (isRunning) {
+        indicator.style.background = 'var(--accent-color)';
+        indicator.style.animation = 'pulse 1.5s ease-in-out infinite';
+        statusText.style.color = 'var(--accent-color)';
+        statusText.textContent = 'PID: ACTIVE';
+        
+        // Update values if provided
+        if (data.target_speed !== undefined) {
+            document.getElementById('pidTarget').textContent = data.target_speed.toFixed(1) + ' m/s';
+        }
+        if (data.current_speed !== undefined) {
+            document.getElementById('pidActual').textContent = data.current_speed.toFixed(1) + ' m/s';
+        }
+        if (data.fan_speed !== undefined) {
+            document.getElementById('pidFanSpeed').textContent = data.fan_speed.toFixed(0) + '%';
+        }
+    } else {
+        indicator.style.background = 'var(--text-secondary)';
+        indicator.style.animation = 'none';
+        statusText.style.color = 'var(--text-secondary)';
+        statusText.textContent = 'PID: OFF';
+        
+        // Reset values
+        document.getElementById('pidTarget').textContent = '--';
+        document.getElementById('pidActual').textContent = '--';
+        document.getElementById('pidFanSpeed').textContent = '--';
+    }
+}
+
+// Load PID status on page load
+async function loadPIDStatus() {
+    try {
+        const response = await fetch('/api/pid/status');
+        const data = await response.json();
+        
+        if (data.running) {
+            updatePIDStatus(true, data);
+            
+            // Update target slider
+            if (data.target_speed !== undefined) {
+                document.getElementById('targetAirspeed').value = data.target_speed;
+                document.getElementById('targetValue').textContent = data.target_speed.toFixed(1);
+            }
+            
+            // Update sensor name if available
+            if (data.sensor_id) {
+                document.getElementById('pidSensorName').textContent = 'Sensor: ' + data.sensor_id;
+            }
+        } else {
+            updatePIDStatus(false);
+        }
+    } catch (error) {
+        console.error('Error loading PID status:', error);
+    }
+}
+
+// Listen for PID status updates via SocketIO
+socket.on('pid_status', function(data) {
+    if (data.running) {
+        updatePIDStatus(true, data);
+        
+        // Update sensor name
+        if (data.sensor_id) {
+            document.getElementById('pidSensorName').textContent = 'Sensor: ' + data.sensor_id;
+        }
+    } else {
+        updatePIDStatus(false);
+    }
+});
+
 // Close modal when clicking outside
 document.addEventListener('click', function(event) {
     const exportModal = document.getElementById('exportModal');
@@ -1193,4 +1318,4 @@ document.addEventListener('click', function(event) {
 loadConfiguration();
 updateWiFiStatus();
 loadFanStatus();
-
+loadPIDStatus();

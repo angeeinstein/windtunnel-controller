@@ -403,6 +403,93 @@ _pwm_device = None
 # Safety timeout configuration (in seconds)
 FAN_SAFETY_TIMEOUT = 0  # Disabled - set to positive value to enable auto-stop
 
+# PID Controller for airspeed control
+class PIDController:
+    """
+    PID Controller with anti-windup for airspeed control.
+    """
+    def __init__(self, kp=5.0, ki=0.5, kd=0.1, min_output=15.0, max_output=100.0):
+        self.kp = kp
+        self.ki = ki
+        self.kd = kd
+        self.min_output = min_output  # Minimum fan speed (%)
+        self.max_output = max_output  # Maximum fan speed (%)
+        
+        self.setpoint = 0.0
+        self.last_error = 0.0
+        self.integral = 0.0
+        self.last_time = None
+        
+    def reset(self):
+        """Reset controller state"""
+        self.last_error = 0.0
+        self.integral = 0.0
+        self.last_time = None
+        
+    def update(self, current_value, dt=None):
+        """
+        Calculate PID output.
+        
+        Args:
+            current_value: Current measured value (airspeed)
+            dt: Time delta (seconds). If None, uses time since last call.
+            
+        Returns:
+            Control output (fan speed %)
+        """
+        current_time = time.time()
+        
+        if dt is None:
+            if self.last_time is not None:
+                dt = current_time - self.last_time
+            else:
+                dt = 0.1  # Default 100ms
+        
+        self.last_time = current_time
+        
+        # Calculate error
+        error = self.setpoint - current_value
+        
+        # Proportional term
+        p_term = self.kp * error
+        
+        # Integral term with anti-windup
+        self.integral += error * dt
+        # Clamp integral to prevent windup
+        max_integral = (self.max_output - self.min_output) / (self.ki if self.ki != 0 else 1.0)
+        self.integral = max(-max_integral, min(max_integral, self.integral))
+        i_term = self.ki * self.integral
+        
+        # Derivative term
+        if dt > 0:
+            derivative = (error - self.last_error) / dt
+        else:
+            derivative = 0.0
+        d_term = self.kd * derivative
+        
+        self.last_error = error
+        
+        # Calculate output
+        output = p_term + i_term + d_term
+        
+        # Clamp output to valid range
+        output = max(self.min_output, min(self.max_output, output))
+        
+        return output
+
+# PID control state
+pid_state = {
+    'enabled': False,
+    'controller': None,
+    'target_airspeed': 0.0,  # m/s
+    'current_airspeed': 0.0,
+    'control_output': 0.0,  # Fan speed %
+    'airspeed_sensor_id': None,  # Which sensor to use for feedback
+    'min_fan_speed': 15.0,  # Minimum fan speed %
+    'thread': None,
+    'stop_event': None
+}
+
 available_sensor_libraries = {}  # Track which libraries are installed
 import importlib
 import math
@@ -805,6 +892,64 @@ def check_fan_safety():
         except Exception as e:
             print(f"Error in fan safety monitor: {e}")
             time.sleep(1)
+
+def pid_control_loop():
+    """
+    PID control loop thread - reads airspeed sensor and controls fan speed.
+    Runs at ~10Hz (100ms updates).
+    """
+    global pid_state
+    import threading
+    
+    logger.info("PID control loop started")
+    
+    while True:
+        try:
+            # Check stop event
+            if pid_state['stop_event'] and pid_state['stop_event'].is_set():
+                logger.info("PID control loop stopped")
+                break
+            
+            if not pid_state['enabled'] or pid_state['controller'] is None:
+                time.sleep(0.1)
+                continue
+            
+            # Get airspeed sensor reading
+            sensor_id = pid_state['airspeed_sensor_id']
+            if not sensor_id:
+                logger.warning("PID: No airspeed sensor configured")
+                time.sleep(0.1)
+                continue
+            
+            # Read current airspeed from sensor_last_values cache
+            current_airspeed = sensor_last_values.get(sensor_id, 0.0)
+            
+            if current_airspeed is None:
+                current_airspeed = 0.0
+            
+            pid_state['current_airspeed'] = current_airspeed
+            
+            # Calculate PID output
+            control_output = pid_state['controller'].update(current_airspeed)
+            pid_state['control_output'] = control_output
+            
+            # Set fan speed
+            set_fan_speed(int(control_output))
+            
+            # Emit PID status for live updates
+            socketio.emit('pid_update', {
+                'target': pid_state['target_airspeed'],
+                'current': current_airspeed,
+                'output': control_output,
+                'enabled': pid_state['enabled']
+            })
+            
+            # Run at 10Hz
+            time.sleep(0.1)
+            
+        except Exception as e:
+            logger.error(f"Error in PID control loop: {e}")
+            time.sleep(0.1)
 
 def init_ads1115(config):
     """Initialize ADS1115 ADC"""
@@ -1730,6 +1875,10 @@ def save_settings_to_file(settings):
 
 # Global settings
 current_settings = load_settings()
+
+# Initialize PID state from settings
+pid_state['airspeed_sensor_id'] = current_settings.get('airspeed_sensor_id')
+pid_state['min_fan_speed'] = current_settings.get('min_fan_speed', 15.0)
 
 # Add cache control headers
 @app.after_request
@@ -2908,6 +3057,136 @@ def fan_stop():
             return jsonify({'status': 'error', 'message': 'Failed to stop fan'}), 500
     except Exception as e:
         print(f"Error stopping fan: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/pid/start', methods=['POST'])
+def pid_start():
+    """Start PID airspeed control"""
+    global pid_state
+    try:
+        data = request.get_json()
+        target_airspeed = float(data.get('target_airspeed', 10.0))
+        
+        if pid_state['enabled']:
+            return jsonify({'status': 'error', 'message': 'PID control already running'}), 400
+        
+        if not pid_state['airspeed_sensor_id']:
+            return jsonify({'status': 'error', 'message': 'No airspeed sensor configured'}), 400
+        
+        # Create PID controller with current parameters
+        kp = current_settings.get('pid_kp', 5.0)
+        ki = current_settings.get('pid_ki', 0.5)
+        kd = current_settings.get('pid_kd', 0.1)
+        min_speed = current_settings.get('min_fan_speed', 15.0)
+        
+        pid_state['controller'] = PIDController(kp=kp, ki=ki, kd=kd, min_output=min_speed, max_output=100.0)
+        pid_state['controller'].setpoint = target_airspeed
+        pid_state['target_airspeed'] = target_airspeed
+        pid_state['enabled'] = True
+        
+        # Start PID thread if not running
+        if pid_state['thread'] is None or not pid_state['thread'].is_alive():
+            pid_state['stop_event'] = threading.Event()
+            pid_state['thread'] = threading.Thread(target=pid_control_loop, daemon=True)
+            pid_state['thread'].start()
+        
+        logger.info(f"PID control started: target={target_airspeed} m/s, Kp={kp}, Ki={ki}, Kd={kd}")
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'PID control started (target: {target_airspeed} m/s)',
+            'target_airspeed': target_airspeed,
+            'kp': kp,
+            'ki': ki,
+            'kd': kd
+        })
+    except Exception as e:
+        logger.error(f"Error starting PID control: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/pid/stop', methods=['POST'])
+def pid_stop():
+    """Stop PID airspeed control"""
+    global pid_state
+    try:
+        pid_state['enabled'] = False
+        pid_state['target_airspeed'] = 0.0
+        
+        # Stop fan
+        set_fan_speed(0)
+        
+        logger.info("PID control stopped")
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'PID control stopped'
+        })
+    except Exception as e:
+        logger.error(f"Error stopping PID control: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/pid/status', methods=['GET'])
+def pid_status():
+    """Get current PID control status"""
+    global pid_state
+    try:
+        return jsonify({
+            'status': 'success',
+            'enabled': pid_state['enabled'],
+            'target_airspeed': pid_state['target_airspeed'],
+            'current_airspeed': pid_state['current_airspeed'],
+            'control_output': pid_state['control_output'],
+            'airspeed_sensor_id': pid_state['airspeed_sensor_id'],
+            'min_fan_speed': pid_state['min_fan_speed']
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/pid/settings', methods=['GET', 'POST'])
+def pid_settings():
+    """Get or update PID settings"""
+    global current_settings, pid_state
+    try:
+        if request.method == 'GET':
+            return jsonify({
+                'status': 'success',
+                'kp': current_settings.get('pid_kp', 5.0),
+                'ki': current_settings.get('pid_ki', 0.5),
+                'kd': current_settings.get('pid_kd', 0.1),
+                'min_fan_speed': current_settings.get('min_fan_speed', 15.0),
+                'airspeed_sensor_id': current_settings.get('airspeed_sensor_id')
+            })
+        else:  # POST
+            data = request.get_json()
+            
+            if 'kp' in data:
+                current_settings['pid_kp'] = float(data['kp'])
+            if 'ki' in data:
+                current_settings['pid_ki'] = float(data['ki'])
+            if 'kd' in data:
+                current_settings['pid_kd'] = float(data['kd'])
+            if 'min_fan_speed' in data:
+                current_settings['min_fan_speed'] = float(data['min_fan_speed'])
+                pid_state['min_fan_speed'] = float(data['min_fan_speed'])
+            if 'airspeed_sensor_id' in data:
+                current_settings['airspeed_sensor_id'] = data['airspeed_sensor_id']
+                pid_state['airspeed_sensor_id'] = data['airspeed_sensor_id']
+            
+            save_settings_to_file(current_settings)
+            
+            # Update running controller if active
+            if pid_state['enabled'] and pid_state['controller']:
+                pid_state['controller'].kp = current_settings.get('pid_kp', 5.0)
+                pid_state['controller'].ki = current_settings.get('pid_ki', 0.5)
+                pid_state['controller'].kd = current_settings.get('pid_kd', 0.1)
+                pid_state['controller'].min_output = current_settings.get('min_fan_speed', 15.0)
+            
+            return jsonify({
+                'status': 'success',
+                'message': 'PID settings updated'
+            })
+    except Exception as e:
+        logger.error(f"Error with PID settings: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/api/internet/check', methods=['GET'])

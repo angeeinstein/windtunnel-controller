@@ -67,6 +67,47 @@
                     <button class="control-btn danger-btn" id="stopBtn" onclick="stopFan()">Stop</button>
                 </div>
             </div>
+
+            <!-- Airspeed Control Panel -->
+            <div class="control-panel" id="airspeedControlPanel" style="margin-top: 24px;">
+                <h2>Airspeed Control (PID)</h2>
+                <div class="pid-status" id="pidStatus" style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px; padding: 12px; background: var(--card-background); border-radius: 8px;">
+                    <div id="pidIndicator" style="width: 16px; height: 16px; border-radius: 50%; background: var(--text-secondary);"></div>
+                    <span id="pidStatusText" style="color: var(--text-secondary); font-weight: 600;">PID: OFF</span>
+                    <span id="pidSensorName" style="margin-left: auto; font-size: 0.8rem; color: var(--text-secondary); opacity: 0.7;"></span>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 16px; padding: 12px; background: var(--card-background); border-radius: 8px;">
+                    <div>
+                        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px;">Target</div>
+                        <div id="pidTarget" style="font-size: 1.2rem; font-weight: 600; color: var(--accent-color);">--</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px;">Actual</div>
+                        <div id="pidActual" style="font-size: 1.2rem; font-weight: 600; color: var(--text-primary);">--</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px;">Fan</div>
+                        <div id="pidFanSpeed" style="font-size: 1.2rem; font-weight: 600; color: var(--primary-color);">--</div>
+                    </div>
+                </div>
+                
+                <div class="speed-control" style="margin-bottom: 16px;">
+                    <label for="targetAirspeed" style="display: block; margin-bottom: 8px; font-weight: 600;">Target Airspeed: <span id="targetValue">10.0</span> m/s</label>
+                    <input type="range" id="targetAirspeed" min="0" max="30" step="0.5" value="10" 
+                           style="width: 100%; height: 8px; border-radius: 4px; background: var(--border-color); outline: none; -webkit-appearance: none;"
+                           oninput="updateTargetDisplay(this.value)">
+                </div>
+                
+                <div class="controls-grid">
+                    <button class="control-btn" id="pidStartBtn" onclick="startPID()" style="background: var(--accent-color);">Start PID</button>
+                    <button class="control-btn danger-btn" id="pidStopBtn" onclick="stopPID()">Stop PID</button>
+                </div>
+                
+                <div style="margin-top: 12px; text-align: center;">
+                    <a href="/settings" style="color: var(--accent-color); text-decoration: none; font-size: 0.9rem;">⚙️ Configure PID Settings</a>
+                </div>
+            </div>
         </main>
 
         <footer>
