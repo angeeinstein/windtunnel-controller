@@ -932,6 +932,15 @@ function closeExportModal() {
     const modal = document.getElementById('exportModal');
     modal.style.display = 'none';
     selectedUSBDrive = null;
+    
+    // Reset export UI
+    document.getElementById('exportProgress').style.display = 'none';
+    document.getElementById('exportButtons').style.display = 'flex';
+    document.getElementById('usbDrivesList').style.display = 'block';
+    document.getElementById('exportProgressBar').style.width = '0%';
+    
+    // Remove progress listener if still active
+    socket.off('export_progress');
 }
 
 async function loadUSBDrives() {
@@ -1000,12 +1009,31 @@ async function exportToUSB(path, name) {
     const statusDiv = document.getElementById('exportStatus');
     const progressText = document.getElementById('exportProgressText');
     const progressDetail = document.getElementById('exportProgressDetail');
+    const progressBar = document.getElementById('exportProgressBar');
     const usbList = document.getElementById('usbDrivesList');
+    
+    // Get time range selection
+    const timeRange = document.querySelector('input[name="timeRange"]:checked').value;
+    let timeValue = 0;
+    if (timeRange === 'last_minutes') {
+        timeValue = parseInt(document.getElementById('minutesValue').value) || 60;
+    } else if (timeRange === 'last_hours') {
+        timeValue = parseInt(document.getElementById('hoursValue').value) || 24;
+    }
     
     progressDiv.style.display = 'block';
     usbList.style.display = 'none';
+    document.getElementById('exportButtons').style.display = 'none';
     progressText.textContent = 'Preparing export...';
     progressDetail.textContent = `Exporting to ${name}`;
+    progressBar.style.width = '0%';
+    
+    // Listen for progress updates via socket
+    socket.on('export_progress', (data) => {
+        progressBar.style.width = data.progress + '%';
+        progressText.textContent = `Exporting data... ${data.progress}%`;
+        progressDetail.textContent = `Processing ${data.current.toLocaleString()} of ${data.total.toLocaleString()} rows`;
+    });
     
     // Create new abort controller for this export
     exportAbortController = new AbortController();
@@ -1014,15 +1042,23 @@ async function exportToUSB(path, name) {
         const response = await fetch('/api/export/data', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ drive_path: path }),
+            body: JSON.stringify({ 
+                drive_path: path,
+                time_range: timeRange,
+                time_value: timeValue
+            }),
             signal: exportAbortController.signal
         });
         
         const data = await response.json();
         
+        // Remove progress listener
+        socket.off('export_progress');
+        
         if (data.status === 'success') {
+            progressBar.style.width = '100%';
             progressText.textContent = '✓ Export Complete!';
-            progressDetail.textContent = `${data.rows_exported} rows exported to ${data.filename}`;
+            progressDetail.textContent = `${data.rows_exported.toLocaleString()} rows × ${data.columns} columns exported to ${data.filename}`;
             setTimeout(() => {
                 closeExportModal();
             }, 3000);
@@ -1030,8 +1066,10 @@ async function exportToUSB(path, name) {
             statusDiv.innerHTML = `<p style="color: var(--accent-color); text-align: center;">Export failed: ${data.message}</p>`;
             progressDiv.style.display = 'none';
             usbList.style.display = 'block';
+            document.getElementById('exportButtons').style.display = 'flex';
         }
     } catch (error) {
+        socket.off('export_progress');
         if (error.name === 'AbortError') {
             // Request was cancelled, already handled by cancelExport()
             console.log('Export cancelled by user');
@@ -1041,8 +1079,22 @@ async function exportToUSB(path, name) {
         statusDiv.innerHTML = '<p style="color: var(--accent-color); text-align: center;">Export failed. Please try again.</p>';
         progressDiv.style.display = 'none';
         usbList.style.display = 'block';
+        document.getElementById('exportButtons').style.display = 'flex';
     } finally {
         exportAbortController = null;
+    }
+}
+
+function updateTimeRangeUI() {
+    // Optional: Could disable/enable input fields based on selection
+    // For now, radio buttons handle the logic
+}
+
+function cancelExport() {
+    if (exportAbortController) {
+        exportAbortController.abort();
+        socket.off('export_progress');
+        closeExportModal();
     }
 }
 

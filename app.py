@@ -2128,26 +2128,33 @@ def background_data_updater():
     Background thread to send data updates to all connected clients.
     Fixed at 200ms (5Hz) intervals for database consistency.
     All data transmitted in SI units.
+    
+    Note: Database stores full resolution from all sensors (up to 200Hz from UDP).
+    UI receives decimated updates at 10Hz for smooth performance.
     """
     global current_log_file
     
     last_db_flush = time.time()
     last_cleanup = time.time()
-    DB_FLUSH_INTERVAL = 10  # Flush database writes every 10 seconds
+    last_ui_update = time.time()
+    DB_FLUSH_INTERVAL = 5  # Flush database writes every 5 seconds (handles bursts better)
     CLEANUP_INTERVAL = 3600  # Cleanup old data every hour
+    UI_UPDATE_INTERVAL = 0.1  # Send to UI at 10Hz (100ms)
     
     while True:
         data = generate_mock_data()
         timestamp = data.get('timestamp', time.time())
         
-        # Send to connected clients via WebSocket
-        socketio.emit('data_update', data)
-        
-        # Write to database (queued for batch processing)
+        # Write to database (queued for batch processing) - always
         write_sensor_data_to_db(timestamp, data)
         
-        # Periodically flush database writes
+        # Send to connected clients via WebSocket - decimated to 10Hz
         current_time = time.time()
+        if current_time - last_ui_update >= UI_UPDATE_INTERVAL:
+            socketio.emit('data_update', data)
+            last_ui_update = current_time
+        
+        # Periodically flush database writes
         if current_time - last_db_flush >= DB_FLUSH_INTERVAL:
             flush_db_write_queue()
             last_db_flush = current_time
@@ -2157,7 +2164,7 @@ def background_data_updater():
             cleanup_old_data()
             last_cleanup = current_time
         
-        # Fixed update interval (200ms = 5Hz)
+        # Fixed update interval (200ms = 5Hz for hardware sensors)
         time.sleep(UPDATE_INTERVAL_MS / 1000)
 
 @app.route('/')
@@ -2978,6 +2985,10 @@ def export_data():
     try:
         data = request.get_json()
         drive_path = data.get('drive_path')
+        time_range = data.get('time_range', 'all')  # 'all', 'last_minutes', 'last_hours', 'date_range'
+        time_value = data.get('time_value', 60)  # Number of minutes/hours
+        start_time = data.get('start_time')  # For date_range
+        end_time = data.get('end_time')  # For date_range
         
         if not drive_path:
             return jsonify({'status': 'error', 'message': 'Drive path is required'}), 400
@@ -2991,17 +3002,40 @@ def export_data():
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
         
+        # Build time filter query
+        time_filter_sql = ''
+        time_filter_params = []
+        current_time = time.time()
+        
+        if time_range == 'last_minutes':
+            cutoff_time = current_time - (int(time_value) * 60)
+            time_filter_sql = 'WHERE timestamp >= ?'
+            time_filter_params = [cutoff_time]
+        elif time_range == 'last_hours':
+            cutoff_time = current_time - (int(time_value) * 3600)
+            time_filter_sql = 'WHERE timestamp >= ?'
+            time_filter_params = [cutoff_time]
+        elif time_range == 'date_range' and start_time and end_time:
+            time_filter_sql = 'WHERE timestamp BETWEEN ? AND ?'
+            time_filter_params = [float(start_time), float(end_time)]
+        # else: time_range == 'all', no filter
+        
         # Get all unique sensor IDs
-        cursor.execute('SELECT DISTINCT sensor_id FROM sensor_data ORDER BY sensor_id')
+        cursor.execute(f'SELECT DISTINCT sensor_id FROM sensor_data {time_filter_sql} ORDER BY sensor_id', time_filter_params)
         sensor_ids = [row[0] for row in cursor.fetchall()]
         
         if not sensor_ids:
             conn.close()
             return jsonify({'status': 'error', 'message': 'No data to export'}), 400
         
-        # Get all unique timestamps
-        cursor.execute('SELECT DISTINCT timestamp FROM sensor_data ORDER BY timestamp')
+        # Get all unique timestamps in range
+        cursor.execute(f'SELECT DISTINCT timestamp FROM sensor_data {time_filter_sql} ORDER BY timestamp', time_filter_params)
         timestamps = [row[0] for row in cursor.fetchall()]
+        total_timestamps = len(timestamps)
+        
+        if total_timestamps == 0:
+            conn.close()
+            return jsonify({'status': 'error', 'message': 'No data in selected time range'}), 400
         
         # Write CSV with wide format
         with open(filepath, 'w', newline='') as csvfile:
@@ -3041,6 +3075,14 @@ def export_data():
                         row.append(sensor_data.get(sensor_id, ''))  # Empty string if no data
                     csv_writer.writerow(row)
                     total_rows += 1
+                
+                # Emit progress update
+                progress = int((total_rows / total_timestamps) * 100)
+                socketio.emit('export_progress', {
+                    'progress': progress,
+                    'current': total_rows,
+                    'total': total_timestamps
+                })
         
         conn.close()
         
@@ -3056,6 +3098,8 @@ def export_data():
         return jsonify({'status': 'error', 'message': 'Permission denied. Drive may be read-only.'}), 500
     except Exception as e:
         print(f"Error exporting data: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/api/settings/reset', methods=['POST'])

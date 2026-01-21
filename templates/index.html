@@ -87,7 +87,30 @@
         </div>
         <div class="export-modal-content" style="padding: 40px; max-width: 600px; margin: 0 auto;">
             <div id="exportStatus" style="margin-bottom: 24px;">
-                <p style="color: var(--text-secondary); text-align: center;">Select a USB drive to export sensor data</p>
+                <p style="color: var(--text-secondary); text-align: center;">Select time range and USB drive to export sensor data</p>
+            </div>
+            
+            <!-- Time Range Selection -->
+            <div style="margin-bottom: 24px; padding: 20px; background: var(--card-background); border-radius: 8px;">
+                <h3 style="margin: 0 0 16px 0; color: var(--text-primary); font-size: 1rem;">Time Range</h3>
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="radio" name="timeRange" value="all" checked onclick="updateTimeRangeUI()">
+                        <span>All data</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="radio" name="timeRange" value="last_minutes" onclick="updateTimeRangeUI()">
+                        <span>Last</span>
+                        <input type="number" id="minutesValue" value="60" min="1" max="1440" style="width: 80px; padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--input-bg); color: var(--text-primary);">
+                        <span>minutes</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="radio" name="timeRange" value="last_hours" onclick="updateTimeRangeUI()">
+                        <span>Last</span>
+                        <input type="number" id="hoursValue" value="24" min="1" max="168" style="width: 80px; padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--input-bg); color: var(--text-primary);">
+                        <span>hours</span>
+                    </label>
+                </div>
             </div>
             
             <div id="usbDrivesList" style="margin-bottom: 24px;">
@@ -96,10 +119,11 @@
             
             <div id="exportProgress" style="display: none; margin-top: 24px;">
                 <div style="background: var(--card-background); border-radius: 12px; padding: 24px; text-align: center;">
-                    <div class="spinner" style="margin: 0 auto 16px;"></div>
+                    <div class="progress-bar" style="width: 100%; height: 24px; background: var(--border-color); border-radius: 12px; overflow: hidden; margin-bottom: 16px;">
+                        <div id="exportProgressBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--primary-color), var(--accent-color)); transition: width 0.3s ease;"></div>
+                    </div>
                     <p id="exportProgressText" style="color: var(--text-primary); font-weight: 500;">Exporting data...</p>
                     <p id="exportProgressDetail" style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 8px;"></p>
-                    <button class="danger-btn" onclick="cancelExport()" style="margin-top: 20px; padding: 10px 24px; font-size: 1rem;">Cancel Export</button>
                 </div>
             </div>
             
