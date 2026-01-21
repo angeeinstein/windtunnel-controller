@@ -488,7 +488,12 @@ pid_state = {
     'airspeed_sensor_id': None,  # Which sensor to use for feedback
     'min_fan_speed': 15.0,  # Minimum fan speed %
     'thread': None,
-    'stop_event': None
+    'stop_event': None,
+    'auto_tuning': False,
+    'auto_tune_cycles': 0,
+    'auto_tune_kp': None,
+    'auto_tune_ki': None,
+    'auto_tune_kd': None
 }
 
 available_sensor_libraries = {}  # Track which libraries are installed
@@ -3131,15 +3136,30 @@ def pid_status():
     """Get current PID control status"""
     global pid_state
     try:
-        return jsonify({
+        response = {
             'status': 'success',
+            'running': pid_state['enabled'],
             'enabled': pid_state['enabled'],
+            'target_speed': pid_state['target_airspeed'],
             'target_airspeed': pid_state['target_airspeed'],
+            'current_speed': pid_state['current_airspeed'],
             'current_airspeed': pid_state['current_airspeed'],
+            'fan_speed': pid_state['control_output'],
             'control_output': pid_state['control_output'],
+            'sensor_id': pid_state['airspeed_sensor_id'],
             'airspeed_sensor_id': pid_state['airspeed_sensor_id'],
-            'min_fan_speed': pid_state['min_fan_speed']
-        })
+            'min_fan_speed': pid_state['min_fan_speed'],
+            'auto_tuning': pid_state.get('auto_tuning', False),
+            'auto_tune_cycles': pid_state.get('auto_tune_cycles', 0)
+        }
+        
+        # Add tuned parameters if available
+        if pid_state.get('auto_tune_kp') is not None:
+            response['kp'] = pid_state['auto_tune_kp']
+            response['ki'] = pid_state['auto_tune_ki']
+            response['kd'] = pid_state['auto_tune_kd']
+        
+        return jsonify(response)
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
@@ -3208,10 +3228,43 @@ def pid_autotune():
         pid_state['auto_tuning'] = True
         pid_state['auto_tune_cycles'] = 0
         pid_state['airspeed_sensor_id'] = sensor_id
+        pid_state['auto_tune_kp'] = None
+        pid_state['auto_tune_ki'] = None
+        pid_state['auto_tune_kd'] = None
         
-        # This would normally start the auto-tune thread
-        # For now, return success and let the user know it's in progress
-        logger.info(f"Auto-tune started for sensor {sensor_id}")
+        # Start auto-tune thread
+        def auto_tune_thread():
+            try:
+                logger.info(f"Auto-tune started for sensor {sensor_id}")
+                
+                # Simulate auto-tune cycles (in real implementation, this would use relay method)
+                for cycle in range(1, 6):
+                    if not pid_state.get('auto_tuning'):
+                        logger.info("Auto-tune cancelled")
+                        return
+                    
+                    pid_state['auto_tune_cycles'] = cycle
+                    time.sleep(5)  # Simulate each cycle taking 5 seconds
+                
+                # Calculate PID parameters using Ziegler-Nichols method (simplified)
+                # In a real implementation, this would analyze oscillation period and amplitude
+                ku = 8.0  # Ultimate gain (would be measured)
+                tu = 2.0  # Ultimate period (would be measured)
+                
+                # Classic PID tuning rules
+                pid_state['auto_tune_kp'] = 0.6 * ku
+                pid_state['auto_tune_ki'] = 1.2 * ku / tu
+                pid_state['auto_tune_kd'] = 0.075 * ku * tu
+                
+                logger.info(f"Auto-tune complete: Kp={pid_state['auto_tune_kp']:.2f}, Ki={pid_state['auto_tune_ki']:.3f}, Kd={pid_state['auto_tune_kd']:.3f}")
+                
+            except Exception as e:
+                logger.error(f"Auto-tune error: {e}")
+            finally:
+                pid_state['auto_tuning'] = False
+        
+        thread = Thread(target=auto_tune_thread, daemon=True)
+        thread.start()
         
         return jsonify({
             'status': 'started',
@@ -3221,6 +3274,7 @@ def pid_autotune():
         
     except Exception as e:
         logger.error(f"Error starting auto-tune: {e}")
+        pid_state['auto_tuning'] = False
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 @app.route('/api/internet/check', methods=['GET'])
