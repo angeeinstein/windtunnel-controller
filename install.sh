@@ -115,8 +115,6 @@ install_system_packages() {
         "libssl-dev"
         "libffi-dev"
         "python3-lgpio"
-        "pigpio"
-        "python3-pigpio"
     )
     
     # Check and install missing packages
@@ -367,15 +365,14 @@ create_service() {
     cat > "$SERVICE_FILE" <<EOF
 [Unit]
 Description=Wind Tunnel Controller Web Interface
-After=network.target pigpiod.service
-Wants=pigpiod.service
+After=network.target
 
 [Service]
 Type=simple
 User=root
 WorkingDirectory=$INSTALL_DIR
 Environment="PATH=$VENV_DIR/bin"
-ExecStart=$VENV_DIR/bin/gunicorn --worker-class gthread --workers 1 --threads 4 --bind 0.0.0.0:80 --config python:app app:app
+ExecStart=$VENV_DIR/bin/gunicorn --worker-class eventlet --workers 1 --bind 0.0.0.0:80 --config python:app app:app
 Restart=always
 RestartSec=10
 StandardOutput=journal
@@ -428,7 +425,7 @@ Type=simple
 User=root
 WorkingDirectory=$INSTALL_DIR
 Environment="PATH=$VENV_DIR/bin"
-ExecStart=$VENV_DIR/bin/gunicorn --worker-class gthread --workers 1 --threads 4 --bind 0.0.0.0:80 --config python:app app:app
+ExecStart=$VENV_DIR/bin/gunicorn --worker-class eventlet --workers 1 --bind 0.0.0.0:80 --config python:app app:app
 Restart=always
 RestartSec=10
 StandardOutput=journal
@@ -469,15 +466,6 @@ UDEVRULE
 # Enable and start service
 enable_service() {
     print_step "Enabling and starting service..."
-    
-    # Enable and start pigpiod daemon (required for hardware PWM)
-    print_info "Enabling pigpiod daemon for hardware PWM..."
-    systemctl enable pigpiod || {
-        print_warning "Failed to enable pigpiod (hardware PWM may not work)"
-    }
-    systemctl start pigpiod || {
-        print_warning "Failed to start pigpiod (hardware PWM may not work)"
-    }
     
     systemctl enable "$SERVICE_NAME" || {
         print_error "Failed to enable service"
