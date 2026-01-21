@@ -1199,14 +1199,14 @@ async function startPID() {
         const response = await fetch('/api/pid/start', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ target_speed: targetSpeed })
+            body: JSON.stringify({ target_airspeed: targetSpeed })
         });
         const data = await response.json();
         
         if (data.status === 'success') {
             updatePIDStatus(true);
         } else {
-            alert('Failed to start PID control: ' + (data.error || 'Unknown error'));
+            alert('Failed to start PID control: ' + (data.message || data.error || 'Unknown error'));
         }
     } catch (error) {
         console.error('Error starting PID:', error);
@@ -1224,7 +1224,7 @@ async function stopPID() {
         if (data.status === 'success') {
             updatePIDStatus(false);
         } else {
-            alert('Failed to stop PID control: ' + (data.error || 'Unknown error'));
+            alert('Failed to stop PID control: ' + (data.message || data.error || 'Unknown error'));
         }
     } catch (error) {
         console.error('Error stopping PID:', error);
