@@ -1717,7 +1717,7 @@ def add_header(response):
     response.headers['Expires'] = '-1'
     return response
 
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 # Thread lock for data updates
 thread_lock = Lock()
