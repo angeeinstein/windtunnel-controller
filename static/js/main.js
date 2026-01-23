@@ -1214,6 +1214,19 @@ async function startPID() {
     }
     
     try {
+        // Check if PID is already running
+        const statusResponse = await fetch('/api/pid/status');
+        const statusData = await statusResponse.json();
+        
+        // If already running, stop it first
+        if (statusData.running) {
+            const stopResponse = await fetch('/api/pid/stop', { method: 'POST' });
+            await stopResponse.json();
+            // Small delay to ensure clean stop
+            await new Promise(resolve => setTimeout(resolve, 200));
+        }
+        
+        // Now start with new target
         const response = await fetch('/api/pid/start', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1321,6 +1334,13 @@ socket.on('pid_status', function(data) {
         }
     } else {
         updatePIDStatus(false);
+    }
+});
+
+// Listen for live PID updates
+socket.on('pid_update', function(data) {
+    if (data.running) {
+        updatePIDStatus(true, data);
     }
 });
 

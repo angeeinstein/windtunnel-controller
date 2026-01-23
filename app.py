@@ -944,9 +944,10 @@ def pid_control_loop():
             
             # Emit PID status for live updates
             socketio.emit('pid_update', {
-                'target': pid_state['target_airspeed'],
-                'current': current_airspeed,
-                'output': control_output,
+                'running': pid_state['enabled'],
+                'target_speed': pid_state['target_airspeed'],
+                'current_speed': current_airspeed,
+                'fan_speed': control_output,
                 'enabled': pid_state['enabled']
             })
             
