@@ -461,12 +461,13 @@ class PIDController:
         self.integral = max(-max_integral, min(max_integral, self.integral))
         i_term = self.ki * self.integral
         
-        # Derivative term
-        if dt > 0:
-            derivative = (error - self.last_error) / dt
+        # Derivative term (on measurement, not error, to avoid setpoint kick)
+        if dt > 0 and hasattr(self, 'last_pv'):
+            derivative = -(current_value - self.last_pv) / dt  # Negative because we want derivative of error
         else:
             derivative = 0.0
         d_term = self.kd * derivative
+        self.last_pv = current_value
         
         self.last_error = error
         
@@ -936,10 +937,13 @@ def pid_control_loop():
                 continue
             
             # Read current airspeed from sensor_last_values cache
-            current_airspeed = sensor_last_values.get(sensor_id, 0.0)
+            current_airspeed = sensor_last_values.get(sensor_id, None)
             
-            if current_airspeed is None:
-                current_airspeed = 0.0
+            # Skip update if sensor reading is invalid
+            if current_airspeed is None or current_airspeed == 0.0:
+                logger.warning(f"PID: Invalid airspeed reading ({current_airspeed}), skipping update")
+                time.sleep(0.1)
+                continue
             
             pid_state['current_airspeed'] = current_airspeed
             
@@ -2065,9 +2069,11 @@ def generate_mock_data():
                     
                     # Create safe math context with common functions
                     safe_math = {
-                        'sqrt': math.sqrt,
+                        'sqrt': lambda x: math.sqrt(max(0, x)),  # Prevent negative sqrt
                         'pow': math.pow,
                         'abs': abs,
+                        'max': max,
+                        'min': min,
                         'sin': math.sin,
                         'cos': math.cos,
                         'tan': math.tan,
@@ -2101,12 +2107,14 @@ def generate_mock_data():
                     made_progress = True
                 except (ValueError, SyntaxError, NameError) as e:
                     print(f"Warning: Error evaluating formula for sensor {sensor_id}: {e}")
-                    data[sensor_id] = 0
+                    data[sensor_id] = None  # Set to None instead of 0
+                    sensor_values[sensor_id] = None
                     calculated_sensors.remove(sensor)
                     made_progress = True
                 except Exception as e:
                     print(f"Warning: Unexpected error for sensor {sensor_id}: {e}")
-                    data[sensor_id] = 0
+                    data[sensor_id] = None  # Set to None instead of 0
+                    sensor_values[sensor_id] = None
                     calculated_sensors.remove(sensor)
                     made_progress = True
         
