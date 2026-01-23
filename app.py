@@ -3279,22 +3279,23 @@ def pid_autotune():
                     
                     logger.info(f"Auto-tune: Setting fan to base speed {base_speed:.0f}%")
                     set_fan_speed(base_speed)
-                    time.sleep(3)  # Let system stabilize
+                    time.sleep(5)  # Let system stabilize longer
                     
                     cycle_count = 0
                     samples = []
+                    last_log_time = time.time()
                     
                     elapsed_time = 0
                     while cycle_count < max_cycles and elapsed_time < timeout_per_setpoint:
                         elapsed_time = time.time() - start_time
                         
                         if not pid_state.get('auto_tuning'):
-                            logger.info("Auto-tune cancelled")
+                            logger.info("Auto-tune cancelled by user")
                             set_fan_speed(0)
                             return
                         
-                        # After minimum time, allow early exit if we have enough data
-                        if elapsed_time > min_time_per_setpoint and cycle_count >= min_cycles:
+                        # Don't allow early exit in first 45 seconds - need time to collect data
+                        if elapsed_time > 45 and elapsed_time > min_time_per_setpoint and cycle_count >= min_cycles:
                             logger.info(f"Auto-tune: Collected sufficient data for setpoint {setpoint:.2f} ({cycle_count} cycles)")
                             break
                         logger.info("Auto-tune cancelled")
@@ -3318,10 +3319,17 @@ def pid_autotune():
                                 current_airspeed = float(result[0])
                             else:
                                 current_airspeed = 0.0
-                        except:
+                                logger.warning(f"No sensor data for {sensor_id}")
+                        except Exception as e:
                             current_airspeed = 0.0
+                            logger.error(f"Error reading sensor: {e}")
                         
                         samples.append(current_airspeed)
+                        
+                        # Log status periodically
+                        if time.time() - last_log_time > 5:
+                            logger.info(f"Auto-tune: Elapsed {elapsed_time:.0f}s, Airspeed={current_airspeed:.2f}, Cycles={cycle_count}, Samples={len(samples)}")
+                            last_log_time = time.time()
                         
                         # Relay logic: switch fan speed based on error
                         error = setpoint - current_airspeed
@@ -3338,8 +3346,10 @@ def pid_autotune():
                         # Detect zero crossings (when error changes sign)
                         if last_airspeed is not None:
                             last_error = setpoint - last_airspeed
+                            
                             if (last_error > 0 and error < 0) or (last_error < 0 and error > 0):
                                 crossing_times.append(time.time())
+                                logger.debug(f"Zero crossing detected at {elapsed_time:.1f}s")
                                 
                                 # Calculate period from last two crossings
                                 if len(crossing_times) >= 3:
@@ -3376,21 +3386,30 @@ def pid_autotune():
                 set_fan_speed(0)
                 
                 if len(all_ku_values) < 1:
-                    logger.error("Auto-tune failed: Not enough oscillation data collected")
-                    logger.info(f"Completed {total_cycles_completed} cycles across {len(all_ku_values)} setpoints")
-                    pid_state['auto_tuning'] = False
-                    return
-                
-                # Calculate average system characteristics from all test points
-                avg_ku = sum(all_ku_values) / len(all_ku_values)
-                avg_tu = sum(all_periods) / len(all_periods)
-                
-                logger.info(f"Auto-tune measurements from {len(all_ku_values)} setpoints: Ku={avg_ku:.2f}, Tu={avg_tu:.2f}s")
-                
-                # Ziegler-Nichols PID tuning rules
-                pid_state['auto_tune_kp'] = 0.6 * avg_ku
-                pid_state['auto_tune_ki'] = 1.2 * avg_ku / avg_tu
-                pid_state['auto_tune_kd'] = 0.075 * avg_ku * avg_tu
+                    logger.error(f"Auto-tune failed: Not enough oscillation data collected")
+                    logger.error(f"Completed {total_cycles_completed} cycles across {len(test_setpoints)} setpoints")
+                    logger.error(f"Collected Ku values: {len(all_ku_values)}, Periods: {len(all_periods)}")
+                    
+                    # Provide fallback conservative values if no data collected
+                    if total_cycles_completed > 0:
+                        logger.info("Using conservative fallback PID values")
+                        pid_state['auto_tune_kp'] = 2.0
+                        pid_state['auto_tune_ki'] = 0.2
+                        pid_state['auto_tune_kd'] = 0.05
+                    else:
+                        pid_state['auto_tuning'] = False
+                        return
+                else:
+                    # Calculate average system characteristics from all test points
+                    avg_ku = sum(all_ku_values) / len(all_ku_values)
+                    avg_tu = sum(all_periods) / len(all_periods)
+                    
+                    logger.info(f"Auto-tune measurements from {len(all_ku_values)} setpoints: Ku={avg_ku:.2f}, Tu={avg_tu:.2f}s")
+                    
+                    # Ziegler-Nichols PID tuning rules
+                    pid_state['auto_tune_kp'] = 0.6 * avg_ku
+                    pid_state['auto_tune_ki'] = 1.2 * avg_ku / avg_tu
+                    pid_state['auto_tune_kd'] = 0.075 * avg_ku * avg_tu
                 
                 logger.info(f"Auto-tune complete: Kp={pid_state['auto_tune_kp']:.2f}, Ki={pid_state['auto_tune_ki']:.3f}, Kd={pid_state['auto_tune_kd']:.3f} (from {total_cycles_completed} total cycles)")
                 
