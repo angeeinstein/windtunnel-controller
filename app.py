@@ -474,7 +474,15 @@ class PIDController:
         output = p_term + i_term + d_term
         
         # Clamp output to valid range
+        output_unclamped = output
         output = max(self.min_output, min(self.max_output, output))
+        
+        # Debug logging every 2 seconds
+        if not hasattr(self, '_last_log_time'):
+            self._last_log_time = 0
+        if current_time - self._last_log_time > 2.0:
+            logger.info(f"PID Debug: SP={self.setpoint:.2f}, PV={current_value:.2f}, Err={error:.2f} | P={p_term:.1f}, I={i_term:.1f}, D={d_term:.1f} | Out={output_unclamped:.1f}->{output:.1f}%")
+            self._last_log_time = current_time
         
         return output
 
@@ -941,6 +949,13 @@ def pid_control_loop():
             
             # Set fan speed
             set_fan_speed(int(control_output))
+            
+            # Log control action every 2 seconds
+            if not hasattr(pid_control_loop, '_loop_log_time'):
+                pid_control_loop._loop_log_time = 0
+            if time.time() - pid_control_loop._loop_log_time > 2.0:
+                logger.info(f"PID Loop: Target={pid_state['target_airspeed']:.2f} m/s, Actual={current_airspeed:.2f} m/s, Fan={control_output:.1f}%")
+                pid_control_loop._loop_log_time = time.time()
             
             # Emit PID status for live updates
             socketio.emit('pid_update', {
