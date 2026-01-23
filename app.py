@@ -470,8 +470,13 @@ class PIDController:
         
         self.last_error = error
         
-        # Calculate output
-        output = p_term + i_term + d_term
+        # Feedforward: estimate base fan speed needed for this setpoint
+        # Rough linear relationship: 0 m/s = min_output%, 20 m/s = max_output%
+        feedforward = self.min_output + (self.setpoint / 20.0) * (self.max_output - self.min_output)
+        feedforward = max(self.min_output, min(self.max_output, feedforward))
+        
+        # Calculate output: feedforward + feedback correction
+        output = feedforward + p_term + i_term + d_term
         
         # Clamp output to valid range
         output = max(self.min_output, min(self.max_output, output))
