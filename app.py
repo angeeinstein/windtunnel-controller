@@ -3265,7 +3265,7 @@ def pid_autotune():
                         set_fan_speed(0)
                         return
                     
-                    logger.info(f"Auto-tune: Testing setpoint {setpoint:.2f} m/s ({setpoint_idx + 1}/{len(test_setpoints)})")
+                    logger.info(f"===== Auto-tune: Testing setpoint {setpoint:.2f} m/s ({setpoint_idx + 1}/{len(test_setpoints)}) =====")
                     
                     # Calculate base speed for this setpoint (rough estimate)
                     base_speed = min(80.0, max(30.0, setpoint / target_setpoint * 50.0))
@@ -3279,14 +3279,18 @@ def pid_autotune():
                     
                     logger.info(f"Auto-tune: Setting fan to base speed {base_speed:.0f}%")
                     set_fan_speed(base_speed)
+                    logger.info("Auto-tune: Waiting 5 seconds for system to stabilize...")
                     time.sleep(5)  # Let system stabilize longer
+                    logger.info("Auto-tune: Starting oscillation detection")
                     
                     cycle_count = 0
                     samples = []
                     last_log_time = time.time()
+                    iteration_count = 0
                     
                     elapsed_time = 0
                     while cycle_count < max_cycles and elapsed_time < timeout_per_setpoint:
+                        iteration_count += 1
                         elapsed_time = time.time() - start_time
                         
                         if not pid_state.get('auto_tuning'):
@@ -3296,7 +3300,7 @@ def pid_autotune():
                         
                         # Don't allow early exit in first 45 seconds - need time to collect data
                         if elapsed_time > 45 and elapsed_time > min_time_per_setpoint and cycle_count >= min_cycles:
-                            logger.info(f"Auto-tune: Collected sufficient data for setpoint {setpoint:.2f} ({cycle_count} cycles)")
+                            logger.info(f"Auto-tune: Collected sufficient data for setpoint {setpoint:.2f} ({cycle_count} cycles in {elapsed_time:.0f}s)")
                             break
                         logger.info("Auto-tune cancelled")
                         set_fan_speed(0)
@@ -3370,6 +3374,9 @@ def pid_autotune():
                         last_airspeed = current_airspeed
                         time.sleep(0.1)  # Sample at 10 Hz
                     
+                    # Log why loop ended
+                    logger.info(f"Auto-tune: Loop ended for setpoint {setpoint:.2f} - Iterations: {iteration_count}, Cycles: {cycle_count}, Time: {elapsed_time:.1f}s")
+                    
                     # Store results from this setpoint
                     if len(oscillation_periods) > 0 and len(oscillation_amplitudes) > 0:
                         avg_period = sum(oscillation_periods) / len(oscillation_periods)
@@ -3381,8 +3388,11 @@ def pid_autotune():
                         all_ku_values.append(ku)
                         
                         logger.info(f"Setpoint {setpoint:.2f} results: Ku={ku:.2f}, Tu={avg_period:.2f}s")
+                    else:
+                        logger.warning(f"No valid oscillation data for setpoint {setpoint:.2f}")
                 
                 # Stop fan
+                logger.info(f"===== Auto-tune finished all setpoints. Stopping fan. =====")
                 set_fan_speed(0)
                 
                 if len(all_ku_values) < 1:
