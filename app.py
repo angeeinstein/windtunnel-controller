@@ -3302,9 +3302,6 @@ def pid_autotune():
                         if elapsed_time > 45 and elapsed_time > min_time_per_setpoint and cycle_count >= min_cycles:
                             logger.info(f"Auto-tune: Collected sufficient data for setpoint {setpoint:.2f} ({cycle_count} cycles in {elapsed_time:.0f}s)")
                             break
-                        logger.info("Auto-tune cancelled")
-                        set_fan_speed(0)
-                        return
                     
                         # Read current airspeed
                         try:
