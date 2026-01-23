@@ -939,9 +939,9 @@ def pid_control_loop():
             # Read current airspeed from sensor_last_values cache
             current_airspeed = sensor_last_values.get(sensor_id, None)
             
-            # Skip update if sensor reading is invalid
-            if current_airspeed is None or current_airspeed == 0.0:
-                logger.warning(f"PID: Invalid airspeed reading ({current_airspeed}), skipping update")
+            # Skip update if sensor reading is invalid (None means sensor not responding or formula error)
+            if current_airspeed is None:
+                logger.warning(f"PID: Invalid airspeed reading (sensor not responding), skipping update")
                 time.sleep(0.1)
                 continue
             
@@ -2095,6 +2095,7 @@ def generate_mock_data():
                     else:
                         data[sensor_id] = float(result)
                         sensor_values[sensor_id] = float(result)  # Make available for other calculated sensors
+                        sensor_last_values[sensor_id] = float(result)  # Cache for PID and other uses
                     
                     calculated_sensors.remove(sensor)
                     evaluated.add(sensor_id)

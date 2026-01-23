@@ -3882,8 +3882,8 @@ float readTemperatureSensor() {
                         </div>
                         <div style="margin-bottom: 10px;">
                             <label style="display: block; margin-bottom: 5px; font-weight: bold; color: var(--text-primary);">Target Setpoint (m/s)</label>
-                            <input type="number" id="autoTuneSetpoint" step="0.5" min="1" max="30" value="3.5" style="width: 100%; padding: 8px; border: 2px solid var(--border-color); border-radius: 6px; font-size: 1rem; background: white; color: #333;">
-                            <small style="color: var(--text-secondary); display: block; margin-top: 5px;">💡 Adjust based on your sensor's working range (currently 3.5 m/s for sensor testing)</small>
+                            <input type="number" id="autoTuneSetpoint" step="0.5" min="1" max="30" value="10" style="width: 100%; padding: 8px; border: 2px solid var(--border-color); border-radius: 6px; font-size: 1rem; background: white; color: #333;">
+                            <small style="color: var(--text-secondary); display: block; margin-top: 5px;">💡 Choose a representative target speed for your typical operations</small>
                         </div>
                         <button onclick="startAutoTune()" class="save-btn" style="width: 100%; padding: 12px; background: var(--accent-color); margin-top: 0;" id="autoTuneBtn">
                             Start Auto-Tune
