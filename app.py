@@ -470,13 +470,8 @@ class PIDController:
         
         self.last_error = error
         
-        # Feedforward: estimate base fan speed needed for this setpoint
-        # Rough linear relationship: 0 m/s = min_output%, 20 m/s = max_output%
-        feedforward = self.min_output + (self.setpoint / 20.0) * (self.max_output - self.min_output)
-        feedforward = max(self.min_output, min(self.max_output, feedforward))
-        
-        # Calculate output: feedforward + feedback correction
-        output = feedforward + p_term + i_term + d_term
+        # Calculate output (pure PID, integral handles steady-state)
+        output = p_term + i_term + d_term
         
         # Clamp output to valid range
         output = max(self.min_output, min(self.max_output, output))
@@ -3419,10 +3414,11 @@ def pid_autotune():
                     
                     logger.info(f"Auto-tune measurements from {len(all_ku_values)} setpoints: Ku={avg_ku:.2f}, Tu={avg_tu:.2f}s")
                     
-                    # Ziegler-Nichols PID tuning rules
-                    pid_state['auto_tune_kp'] = 0.6 * avg_ku
-                    pid_state['auto_tune_ki'] = 1.2 * avg_ku / avg_tu
-                    pid_state['auto_tune_kd'] = 0.075 * avg_ku * avg_tu
+                    # Ziegler-Nichols PID tuning rules (scaled down 10x for less aggressive response)
+                    # Relay-based auto-tune tends to produce overly aggressive gains
+                    pid_state['auto_tune_kp'] = 0.06 * avg_ku
+                    pid_state['auto_tune_ki'] = 0.12 * avg_ku / avg_tu
+                    pid_state['auto_tune_kd'] = 0.0075 * avg_ku * avg_tu
                 
                 logger.info(f"Auto-tune complete: Kp={pid_state['auto_tune_kp']:.2f}, Ki={pid_state['auto_tune_ki']:.3f}, Kd={pid_state['auto_tune_kd']:.3f} (from {total_cycles_completed} total cycles)")
                 
