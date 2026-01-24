@@ -103,6 +103,7 @@ def write_sensor_data_to_db(timestamp, sensor_data):
     """
     Write sensor data to database.
     Adds to write queue for batch processing.
+    Also logs system data (fan power, PID setpoint) - database only, not shown on UI.
     """
     # Get current sequence info if active
     sequence_name = None
@@ -114,9 +115,21 @@ def write_sensor_data_to_db(timestamp, sensor_data):
             step_number = step_number + 1  # Convert 0-based to 1-based for export
     
     with db_lock:
+        # Log regular sensor data
         for sensor_id, value in sensor_data.items():
             if sensor_id != 'timestamp':  # Skip timestamp field
                 db_write_queue.append((timestamp, sensor_id, value, sequence_name, step_number))
+        
+        # Log system data (hidden from UI, only in database/export)
+        # Fan power (PWM %)
+        if fan_state['running']:
+            fan_power = fan_state.get('speed', 0)
+            db_write_queue.append((timestamp, '_SYSTEM_Fan_Power_%', fan_power, sequence_name, step_number))
+        
+        # PID setpoint (target airspeed)
+        if pid_state.get('enabled', False):
+            target_speed = pid_state.get('target_airspeed', 0)
+            db_write_queue.append((timestamp, '_SYSTEM_PID_Setpoint_m/s', target_speed, sequence_name, step_number))
 
 def flush_db_write_queue():
     """
