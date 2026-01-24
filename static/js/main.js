@@ -1683,7 +1683,7 @@ async function loadSavedSequences() {
                 
                 const deleteBtn = document.createElement('button');
                 deleteBtn.textContent = '×';
-                deleteBtn.style.cssText = 'padding: 6px 12px; background: var(--danger-color); color: white; border: none; border-radius: 4px; font-size: 1.2rem; cursor: pointer; line-height: 1;';
+                deleteBtn.style.cssText = 'padding: 6px 12px; background: #e74c3c; color: white; border: none; border-radius: 4px; font-size: 1.2rem; cursor: pointer; line-height: 1; font-weight: bold;';
                 deleteBtn.title = 'Delete sequence';
                 deleteBtn.onclick = (e) => {
                     e.stopPropagation();
@@ -1903,8 +1903,10 @@ async function startSequence() {
             document.getElementById('startSequenceBtn').style.opacity = '0.5';
             document.getElementById('pauseSequenceBtn').disabled = false;
             document.getElementById('pauseSequenceBtn').style.opacity = '1';
+            document.getElementById('pauseSequenceBtn').style.cursor = 'pointer';
             document.getElementById('stopSequenceBtn').disabled = false;
             document.getElementById('stopSequenceBtn').style.opacity = '1';
+            document.getElementById('stopSequenceBtn').style.cursor = 'pointer';
             document.getElementById('sequenceProgressContent').style.display = 'block';
             document.getElementById('sequenceProgressPlaceholder').style.display = 'none';
         } else {
@@ -1956,8 +1958,10 @@ async function stopSequence() {
             document.getElementById('startSequenceBtn').style.opacity = '1';
             document.getElementById('pauseSequenceBtn').disabled = true;
             document.getElementById('pauseSequenceBtn').style.opacity = '0.5';
+            document.getElementById('pauseSequenceBtn').style.cursor = 'not-allowed';
             document.getElementById('stopSequenceBtn').disabled = true;
             document.getElementById('stopSequenceBtn').style.opacity = '0.5';
+            document.getElementById('stopSequenceBtn').style.cursor = 'not-allowed';
             document.getElementById('sequenceProgressContent').style.display = 'none';
             document.getElementById('sequenceProgressPlaceholder').style.display = 'block';
             
@@ -1996,8 +2000,10 @@ function handleSequenceComplete() {
     document.getElementById('startSequenceBtn').style.opacity = '1';
     document.getElementById('pauseSequenceBtn').disabled = true;
     document.getElementById('pauseSequenceBtn').style.opacity = '0.5';
+    document.getElementById('pauseSequenceBtn').style.cursor = 'not-allowed';
     document.getElementById('stopSequenceBtn').disabled = true;
     document.getElementById('stopSequenceBtn').style.opacity = '0.5';
+    document.getElementById('stopSequenceBtn').style.cursor = 'not-allowed';
     document.getElementById('sequenceProgressContent').style.display = 'none';
     document.getElementById('sequenceProgressPlaceholder').style.display = 'block';
 }
@@ -2013,8 +2019,10 @@ async function checkSequenceStatus() {
             document.getElementById('startSequenceBtn').style.opacity = '0.5';
             document.getElementById('pauseSequenceBtn').disabled = false;
             document.getElementById('pauseSequenceBtn').style.opacity = '1';
+            document.getElementById('pauseSequenceBtn').style.cursor = 'pointer';
             document.getElementById('stopSequenceBtn').disabled = false;
             document.getElementById('stopSequenceBtn').style.opacity = '1';
+            document.getElementById('stopSequenceBtn').style.cursor = 'pointer';
             document.getElementById('sequenceProgressContent').style.display = 'block';
             document.getElementById('sequenceProgressPlaceholder').style.display = 'none';
         }
