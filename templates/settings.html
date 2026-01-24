@@ -1569,25 +1569,6 @@ float readTemperatureSensor() {
                                 </button>
                             ` : ''}
                         </div>
-                        
-                        <button class="configure-hardware-btn" onclick="scanNetworkSensors(); event.preventDefault();" style="background: var(--success-color); margin-bottom: 8px;">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <circle cx="12" cy="12" r="10"></circle>
-                                <line x1="22" y1="12" x2="18" y2="12"></line>
-                                <line x1="6" y1="12" x2="2" y2="12"></line>
-                                <line x1="12" y1="6" x2="12" y2="2"></line>
-                                <line x1="12" y1="22" x2="12" y2="18"></line>
-                            </svg>
-                            Scan & Add Network Sensor
-                        </button>
-                        <button class="configure-hardware-btn" onclick="showUDPDevices(); event.preventDefault();" style="background: var(--warning-color);">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <circle cx="12" cy="12" r="10"></circle>
-                                <circle cx="12" cy="12" r="6"></circle>
-                                <circle cx="12" cy="12" r="2"></circle>
-                            </svg>
-                            View Current Data
-                        </button>
                     </div>
                 `;
                 html += '</div>';
