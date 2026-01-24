@@ -5100,6 +5100,10 @@ def start_sequence():
         
         # Auto-start PID if not running
         if not pid_state.get('enabled', False):
+            # Check if airspeed sensor is configured
+            if not pid_state.get('airspeed_sensor_id'):
+                return jsonify({'status': 'error', 'message': 'No airspeed sensor configured. Please configure a sensor first.'}), 400
+            
             # Get initial target speed from first step
             first_step = sequence['steps'][0] if sequence['steps'] else None
             if first_step:
@@ -5112,11 +5116,22 @@ def start_sequence():
                 else:
                     initial_speed = 0.0
                 
-                # Start PID with initial speed
-                pid_state['enabled'] = True
+                # Create PID controller with current parameters
+                kp = current_settings.get('pid_kp', 5.0)
+                ki = current_settings.get('pid_ki', 0.5)
+                kd = current_settings.get('pid_kd', 0.1)
+                min_speed = current_settings.get('min_fan_speed', 15.0)
+                
+                pid_state['controller'] = PIDController(kp=kp, ki=ki, kd=kd, min_output=min_speed, max_output=100.0)
+                pid_state['controller'].setpoint = initial_speed
                 pid_state['target_airspeed'] = initial_speed
-                if pid_state['controller']:
-                    pid_state['controller'].setpoint = initial_speed
+                pid_state['enabled'] = True
+                
+                # Start PID thread if not running
+                if pid_state['thread'] is None or not pid_state['thread'].is_alive():
+                    pid_state['stop_event'] = threading.Event()
+                    pid_state['thread'] = threading.Thread(target=pid_control_loop, daemon=True)
+                    pid_state['thread'].start()
                 
                 logger.info(f"Auto-started PID control with target {initial_speed} m/s for sequence")
         
