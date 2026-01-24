@@ -1601,6 +1601,16 @@ let sequenceSteps = [];
 
 function openSequenceModal() {
     document.getElementById('sequenceModal').style.display = 'flex';
+    
+    // Reset UI state
+    selectedSequenceName = null;
+    currentSequenceData = null;
+    document.getElementById('sequenceTimelineContainer').style.display = 'none';
+    const startBtn = document.getElementById('startSequenceBtn');
+    startBtn.disabled = true;
+    startBtn.style.opacity = '0.5';
+    startBtn.style.cursor = 'not-allowed';
+    
     loadSavedSequences();
     checkSequenceStatus();
 }
@@ -1696,9 +1706,12 @@ function selectSequence(name, sequence) {
         }
     });
     
-    // Show timeline and controls
+    // Show timeline and enable start button
     document.getElementById('sequenceTimelineContainer').style.display = 'block';
-    document.getElementById('sequencePlaybackControls').style.display = 'block';
+    const startBtn = document.getElementById('startSequenceBtn');
+    startBtn.disabled = false;
+    startBtn.style.opacity = '1';
+    startBtn.style.cursor = 'pointer';
     
     // Draw timeline
     drawSequenceTimeline(sequence);
@@ -1874,7 +1887,8 @@ async function startSequence() {
             document.getElementById('pauseSequenceBtn').style.opacity = '1';
             document.getElementById('stopSequenceBtn').disabled = false;
             document.getElementById('stopSequenceBtn').style.opacity = '1';
-            document.getElementById('sequenceProgressDisplay').style.display = 'block';
+            document.getElementById('sequenceProgressContent').style.display = 'block';
+            document.getElementById('sequenceProgressPlaceholder').style.display = 'none';
         } else {
             alert('Error starting sequence: ' + data.message);
         }
@@ -1926,7 +1940,8 @@ async function stopSequence() {
             document.getElementById('pauseSequenceBtn').style.opacity = '0.5';
             document.getElementById('stopSequenceBtn').disabled = true;
             document.getElementById('stopSequenceBtn').style.opacity = '0.5';
-            document.getElementById('sequenceProgressDisplay').style.display = 'none';
+            document.getElementById('sequenceProgressContent').style.display = 'none';
+            document.getElementById('sequenceProgressPlaceholder').style.display = 'block';
             
             // Reset pause button text
             document.getElementById('pauseSequenceBtn').innerHTML = `
@@ -1965,6 +1980,8 @@ function handleSequenceComplete() {
     document.getElementById('pauseSequenceBtn').style.opacity = '0.5';
     document.getElementById('stopSequenceBtn').disabled = true;
     document.getElementById('stopSequenceBtn').style.opacity = '0.5';
+    document.getElementById('sequenceProgressContent').style.display = 'none';
+    document.getElementById('sequenceProgressPlaceholder').style.display = 'block';
 }
 
 async function checkSequenceStatus() {
@@ -1980,7 +1997,8 @@ async function checkSequenceStatus() {
             document.getElementById('pauseSequenceBtn').style.opacity = '1';
             document.getElementById('stopSequenceBtn').disabled = false;
             document.getElementById('stopSequenceBtn').style.opacity = '1';
-            document.getElementById('sequenceProgressDisplay').style.display = 'block';
+            document.getElementById('sequenceProgressContent').style.display = 'block';
+            document.getElementById('sequenceProgressPlaceholder').style.display = 'none';
         }
     } catch (error) {
         console.error('Error checking sequence status:', error);

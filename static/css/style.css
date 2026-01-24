@@ -379,7 +379,8 @@ main {
     display: flex;
     align-items: center;
     justify-content: center;
-    overflow: hidden;
+    overflow: auto;
+    max-height: calc(100vh - 140px);
 }
 
 #fullscreenGraph {
@@ -458,6 +459,8 @@ footer {
     background: var(--background);
     padding: 40px;
     border-radius: 12px;
+    overflow-y: auto;
+    max-height: calc(100vh - 140px);
 }
 
 .usb-drive-item {
