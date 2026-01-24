@@ -1243,6 +1243,13 @@ async function startFan() {
 
 async function stopFan() {
     try {
+        // Stop sequence if running
+        try {
+            await fetch('/api/sequence/stop', { method: 'POST' });
+        } catch (e) {
+            // Ignore if sequence endpoint fails
+        }
+        
         // Stop auto-tune if running
         if (window.pidAutoTuning) {
             await fetch('/api/pid/autotune/stop', { method: 'POST' });
@@ -1558,16 +1565,655 @@ socket.on('pid_update', function(data) {
     }
 });
 
+// Listen for sequence progress updates
+socket.on('sequence_progress', function(data) {
+    updateSequenceProgress(data);
+});
+
+socket.on('sequence_complete', function(data) {
+    handleSequenceComplete();
+});
+
+socket.on('sequence_loop', function(data) {
+    console.log('Sequence looped');
+});
+
 // Close modal when clicking outside
 document.addEventListener('click', function(event) {
     const exportModal = document.getElementById('exportModal');
     if (event.target === exportModal) {
         closeExportModal();
     }
+    
+    const sequenceModal = document.getElementById('sequenceModal');
+    if (event.target === sequenceModal) {
+        closeSequenceModal();
+    }
 });
 
-// Initialize on page load
-loadConfiguration();
-updateWiFiStatus();
-loadFanStatus();
-loadPIDStatus();
+// =============================================================================
+// Sequence Management
+// =============================================================================
+
+let currentSequenceData = null;
+let selectedSequenceName = null;
+let sequenceSteps = [];
+
+function openSequenceModal() {
+    document.getElementById('sequenceModal').style.display = 'flex';
+    loadSavedSequences();
+    checkSequenceStatus();
+}
+
+function closeSequenceModal() {
+    document.getElementById('sequenceModal').style.display = 'none';
+}
+
+function switchSequenceTab(tab) {
+    const runTab = document.getElementById('sequenceRunTab');
+    const editTab = document.getElementById('sequenceEditTab');
+    const runBtn = document.getElementById('sequenceTabRun');
+    const editBtn = document.getElementById('sequenceTabEdit');
+    
+    if (tab === 'run') {
+        runTab.style.display = 'block';
+        editTab.style.display = 'none';
+        runBtn.style.borderBottom = '3px solid var(--accent-color)';
+        runBtn.style.color = 'var(--accent-color)';
+        editBtn.style.borderBottom = '3px solid transparent';
+        editBtn.style.color = 'var(--text-secondary)';
+        loadSavedSequences();
+    } else {
+        runTab.style.display = 'none';
+        editTab.style.display = 'block';
+        runBtn.style.borderBottom = '3px solid transparent';
+        runBtn.style.color = 'var(--text-secondary)';
+        editBtn.style.borderBottom = '3px solid var(--accent-color)';
+        editBtn.style.color = 'var(--accent-color)';
+    }
+}
+
+async function loadSavedSequences() {
+    try {
+        const response = await fetch('/api/sequence/list');
+        const data = await response.json();
+        
+        const sequenceList = document.getElementById('sequenceList');
+        
+        if (data.status === 'success' && Object.keys(data.sequences).length > 0) {
+            sequenceList.innerHTML = '';
+            
+            for (const [name, sequence] of Object.entries(data.sequences)) {
+                const item = document.createElement('div');
+                item.style.cssText = 'padding: 12px; background: var(--background-color); border: 2px solid transparent; border-radius: 6px; cursor: pointer; transition: all 0.2s; display: flex; justify-content: space-between; align-items: center;';
+                item.onclick = () => selectSequence(name, sequence);
+                
+                const info = document.createElement('div');
+                const nameEl = document.createElement('div');
+                nameEl.textContent = name;
+                nameEl.style.cssText = 'font-weight: 600; color: var(--text-primary); margin-bottom: 4px;';
+                
+                const stepsEl = document.createElement('div');
+                stepsEl.textContent = `${sequence.steps.length} steps`;
+                stepsEl.style.cssText = 'font-size: 0.875rem; color: var(--text-secondary);';
+                
+                info.appendChild(nameEl);
+                info.appendChild(stepsEl);
+                
+                const loadBtn = document.createElement('button');
+                loadBtn.textContent = 'Edit';
+                loadBtn.style.cssText = 'padding: 6px 12px; background: var(--accent-color); color: white; border: none; border-radius: 4px; font-size: 0.875rem; cursor: pointer;';
+                loadBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    loadSequenceForEdit(name, sequence);
+                };
+                
+                item.appendChild(info);
+                item.appendChild(loadBtn);
+                sequenceList.appendChild(item);
+            }
+        } else {
+            sequenceList.innerHTML = '<div style="text-align: center; padding: 24px; color: var(--text-secondary); font-style: italic;">No saved sequences. Create one in the Edit tab.</div>';
+        }
+    } catch (error) {
+        console.error('Error loading sequences:', error);
+    }
+}
+
+function selectSequence(name, sequence) {
+    selectedSequenceName = name;
+    currentSequenceData = sequence;
+    
+    // Update UI
+    const items = document.querySelectorAll('#sequenceList > div');
+    items.forEach(item => {
+        if (item.querySelector('div > div').textContent === name) {
+            item.style.border = '2px solid var(--accent-color)';
+            item.style.background = 'var(--card-background)';
+        } else {
+            item.style.border = '2px solid transparent';
+            item.style.background = 'var(--background-color)';
+        }
+    });
+    
+    // Show timeline and controls
+    document.getElementById('sequenceTimelineContainer').style.display = 'block';
+    document.getElementById('sequencePlaybackControls').style.display = 'block';
+    
+    // Draw timeline
+    drawSequenceTimeline(sequence);
+}
+
+function drawSequenceTimeline(sequence) {
+    const canvas = document.getElementById('sequenceTimeline');
+    const ctx = canvas.getContext('2d');
+    
+    // Set canvas size
+    canvas.width = 800;
+    canvas.height = 200;
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Calculate total duration
+    let totalDuration = 0;
+    sequence.steps.forEach(step => {
+        totalDuration += step.duration || 10;
+    });
+    
+    if (totalDuration === 0) return;
+    
+    // Set up drawing parameters
+    const padding = 40;
+    const graphWidth = canvas.width - 2 * padding;
+    const graphHeight = canvas.height - 2 * padding;
+    const maxSpeed = Math.max(...sequence.steps.flatMap(step => {
+        if (step.type === 'ramp') return [step.start_airspeed || 0, step.end_airspeed || 0];
+        if (step.type === 'sine') return [(step.center_airspeed || 0) + (step.amplitude || 0)];
+        return [step.airspeed || 0];
+    })) * 1.1; // 10% margin
+    
+    // Draw axes
+    ctx.strokeStyle = '#666';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padding, padding);
+    ctx.lineTo(padding, canvas.height - padding);
+    ctx.lineTo(canvas.width - padding, canvas.height - padding);
+    ctx.stroke();
+    
+    // Draw axis labels
+    ctx.fillStyle = '#999';
+    ctx.font = '12px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('Time (s)', canvas.width / 2, canvas.height - 5);
+    ctx.save();
+    ctx.translate(10, canvas.height / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText('Airspeed (m/s)', 0, 0);
+    ctx.restore();
+    
+    // Draw speed profile
+    ctx.strokeStyle = '#3b82f6';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    
+    let currentTime = 0;
+    let lastX = padding;
+    let lastY = canvas.height - padding;
+    
+    sequence.steps.forEach((step, index) => {
+        const duration = step.duration || 10;
+        const startX = padding + (currentTime / totalDuration) * graphWidth;
+        const endX = padding + ((currentTime + duration) / totalDuration) * graphWidth;
+        
+        if (step.type === 'hold' || step.type === 'step') {
+            const speed = step.airspeed || 0;
+            const y = canvas.height - padding - (speed / maxSpeed) * graphHeight;
+            
+            if (index === 0 || step.type === 'step') {
+                ctx.moveTo(startX, y);
+            } else {
+                ctx.lineTo(startX, y);
+            }
+            ctx.lineTo(endX, y);
+            lastY = y;
+            
+        } else if (step.type === 'ramp') {
+            const startSpeed = step.start_airspeed || 0;
+            const endSpeed = step.end_airspeed || 0;
+            const startY = canvas.height - padding - (startSpeed / maxSpeed) * graphHeight;
+            const endY = canvas.height - padding - (endSpeed / maxSpeed) * graphHeight;
+            
+            if (index === 0) {
+                ctx.moveTo(startX, startY);
+            } else {
+                ctx.lineTo(startX, startY);
+            }
+            ctx.lineTo(endX, endY);
+            lastY = endY;
+            
+        } else if (step.type === 'sine') {
+            const center = step.center_airspeed || 0;
+            const amplitude = step.amplitude || 0;
+            const period = step.period || 5;
+            const samples = 50;
+            
+            for (let i = 0; i <= samples; i++) {
+                const t = (i / samples) * duration;
+                const angle = (t / period) * 2 * Math.PI;
+                const speed = Math.max(0, center + amplitude * Math.sin(angle));
+                const x = startX + (i / samples) * (endX - startX);
+                const y = canvas.height - padding - (speed / maxSpeed) * graphHeight;
+                
+                if (index === 0 && i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            lastY = canvas.height - padding - (center / maxSpeed) * graphHeight;
+        }
+        
+        lastX = endX;
+        currentTime += duration;
+    });
+    
+    ctx.stroke();
+    
+    // Draw step markers
+    currentTime = 0;
+    ctx.fillStyle = '#3b82f6';
+    sequence.steps.forEach((step, index) => {
+        const x = padding + (currentTime / totalDuration) * graphWidth;
+        ctx.beginPath();
+        ctx.arc(x, canvas.height - padding, 4, 0, 2 * Math.PI);
+        ctx.fill();
+        
+        // Step label
+        ctx.fillStyle = '#999';
+        ctx.font = '10px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${index + 1}`, x, canvas.height - padding + 15);
+        
+        currentTime += step.duration || 10;
+    });
+}
+
+async function startSequence() {
+    if (!selectedSequenceName) {
+        alert('Please select a sequence first.');
+        return;
+    }
+    
+    // Check if PID is running
+    const pidResponse = await fetch('/api/pid/status');
+    const pidStatus = await pidResponse.json();
+    
+    if (!pidStatus.running) {
+        alert('PID control must be active to run sequences. Please start PID mode first.');
+        return;
+    }
+    
+    const loop = document.getElementById('sequenceLoopCheckbox').checked;
+    
+    try {
+        const response = await fetch('/api/sequence/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: selectedSequenceName, loop: loop })
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            // Update UI
+            document.getElementById('startSequenceBtn').disabled = true;
+            document.getElementById('startSequenceBtn').style.opacity = '0.5';
+            document.getElementById('pauseSequenceBtn').disabled = false;
+            document.getElementById('pauseSequenceBtn').style.opacity = '1';
+            document.getElementById('stopSequenceBtn').disabled = false;
+            document.getElementById('stopSequenceBtn').style.opacity = '1';
+            document.getElementById('sequenceProgressDisplay').style.display = 'block';
+        } else {
+            alert('Error starting sequence: ' + data.message);
+        }
+    } catch (error) {
+        console.error('Error starting sequence:', error);
+        alert('Error starting sequence');
+    }
+}
+
+async function pauseSequence() {
+    try {
+        const response = await fetch('/api/sequence/pause', { method: 'POST' });
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            const btn = document.getElementById('pauseSequenceBtn');
+            if (data.paused) {
+                btn.innerHTML = `
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                    </svg>
+                    Resume
+                `;
+            } else {
+                btn.innerHTML = `
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="6" y="4" width="4" height="16"></rect>
+                        <rect x="14" y="4" width="4" height="16"></rect>
+                    </svg>
+                    Pause
+                `;
+            }
+        }
+    } catch (error) {
+        console.error('Error pausing sequence:', error);
+    }
+}
+
+async function stopSequence() {
+    try {
+        const response = await fetch('/api/sequence/stop', { method: 'POST' });
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            // Reset UI
+            document.getElementById('startSequenceBtn').disabled = false;
+            document.getElementById('startSequenceBtn').style.opacity = '1';
+            document.getElementById('pauseSequenceBtn').disabled = true;
+            document.getElementById('pauseSequenceBtn').style.opacity = '0.5';
+            document.getElementById('stopSequenceBtn').disabled = true;
+            document.getElementById('stopSequenceBtn').style.opacity = '0.5';
+            document.getElementById('sequenceProgressDisplay').style.display = 'none';
+            
+            // Reset pause button text
+            document.getElementById('pauseSequenceBtn').innerHTML = `
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="6" y="4" width="4" height="16"></rect>
+                    <rect x="14" y="4" width="4" height="16"></rect>
+                </svg>
+                Pause
+            `;
+        }
+    } catch (error) {
+        console.error('Error stopping sequence:', error);
+    }
+}
+
+function updateSequenceProgress(data) {
+    document.getElementById('currentStepNumber').textContent = data.step_index + 1;
+    document.getElementById('totalStepCount').textContent = data.step_count;
+    document.getElementById('stepProgressPercent').textContent = Math.round(data.step_progress);
+    document.getElementById('stepProgressBar').style.width = data.step_progress + '%';
+    
+    if (currentSequenceData && data.step_index < currentSequenceData.steps.length) {
+        const step = currentSequenceData.steps[data.step_index];
+        document.getElementById('currentStepType').textContent = step.type.charAt(0).toUpperCase() + step.type.slice(1);
+    }
+    
+    document.getElementById('stepElapsedTime').textContent = data.elapsed.toFixed(1) + 's';
+    document.getElementById('stepDuration').textContent = data.duration.toFixed(1) + 's';
+}
+
+function handleSequenceComplete() {
+    // Reset UI
+    document.getElementById('startSequenceBtn').disabled = false;
+    document.getElementById('startSequenceBtn').style.opacity = '1';
+    document.getElementById('pauseSequenceBtn').disabled = true;
+    document.getElementById('pauseSequenceBtn').style.opacity = '0.5';
+    document.getElementById('stopSequenceBtn').disabled = true;
+    document.getElementById('stopSequenceBtn').style.opacity = '0.5';
+}
+
+async function checkSequenceStatus() {
+    try {
+        const response = await fetch('/api/sequence/status');
+        const data = await response.json();
+        
+        if (data.status === 'success' && data.sequence_status.active) {
+            // Sequence is running, update UI
+            document.getElementById('startSequenceBtn').disabled = true;
+            document.getElementById('startSequenceBtn').style.opacity = '0.5';
+            document.getElementById('pauseSequenceBtn').disabled = false;
+            document.getElementById('pauseSequenceBtn').style.opacity = '1';
+            document.getElementById('stopSequenceBtn').disabled = false;
+            document.getElementById('stopSequenceBtn').style.opacity = '1';
+            document.getElementById('sequenceProgressDisplay').style.display = 'block';
+        }
+    } catch (error) {
+        console.error('Error checking sequence status:', error);
+    }
+}
+
+// Edit Tab Functions
+
+function loadSequenceForEdit(name, sequence) {
+    document.getElementById('sequenceName').value = name;
+    sequenceSteps = JSON.parse(JSON.stringify(sequence.steps)); // Deep copy
+    renderStepList();
+    switchSequenceTab('edit');
+}
+
+function addSequenceStep() {
+    const step = {
+        type: 'ramp',
+        start_airspeed: 0,
+        end_airspeed: 10,
+        duration: 10,
+        servo_angle: 0
+    };
+    sequenceSteps.push(step);
+    renderStepList();
+}
+
+function renderStepList() {
+    const container = document.getElementById('stepList');
+    
+    if (sequenceSteps.length === 0) {
+        container.innerHTML = '<div style="text-align: center; padding: 24px; color: var(--text-secondary); font-style: italic; background: var(--card-background); border-radius: 8px;">No steps added. Click "Add Step" to begin.</div>';
+        return;
+    }
+    
+    container.innerHTML = '';
+    
+    sequenceSteps.forEach((step, index) => {
+        const stepCard = document.createElement('div');
+        stepCard.style.cssText = 'padding: 16px; background: var(--card-background); border-radius: 8px; border: 2px solid var(--border-color);';
+        
+        let html = `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h4 style="margin: 0; color: var(--text-primary);">Step ${index + 1}</h4>
+                <div style="display: flex; gap: 8px;">
+                    ${index > 0 ? `<button onclick="moveStep(${index}, -1)" style="padding: 4px 8px; background: var(--text-secondary); color: white; border: none; border-radius: 4px; cursor: pointer;">↑</button>` : ''}
+                    ${index < sequenceSteps.length - 1 ? `<button onclick="moveStep(${index}, 1)" style="padding: 4px 8px; background: var(--text-secondary); color: white; border: none; border-radius: 4px; cursor: pointer;">↓</button>` : ''}
+                    <button onclick="removeStep(${index})" style="padding: 4px 8px; background: var(--danger-color); color: white; border: none; border-radius: 4px; cursor: pointer;">×</button>
+                </div>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div>
+                    <label style="display: block; margin-bottom: 4px; font-size: 0.875rem; color: var(--text-secondary);">Type</label>
+                    <select onchange="updateStepType(${index}, this.value)" style="width: 100%; padding: 8px; background: var(--background-color); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary);">
+                        <option value="ramp" ${step.type === 'ramp' ? 'selected' : ''}>Ramp</option>
+                        <option value="hold" ${step.type === 'hold' ? 'selected' : ''}>Hold</option>
+                        <option value="step" ${step.type === 'step' ? 'selected' : ''}>Step</option>
+                        <option value="sine" ${step.type === 'sine' ? 'selected' : ''}>Sine Wave</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="display: block; margin-bottom: 4px; font-size: 0.875rem; color: var(--text-secondary);">Duration (s)</label>
+                    <input type="number" value="${step.duration || 10}" onchange="updateStepField(${index}, 'duration', parseFloat(this.value))" min="0" step="0.1" style="width: 100%; padding: 8px; background: var(--background-color); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary);">
+                </div>
+            </div>
+            
+            <div id="stepFields${index}" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px;">
+        `;
+        
+        if (step.type === 'ramp') {
+            html += `
+                <div>
+                    <label style="display: block; margin-bottom: 4px; font-size: 0.875rem; color: var(--text-secondary);">Start Speed (m/s)</label>
+                    <input type="number" value="${step.start_airspeed || 0}" onchange="updateStepField(${index}, 'start_airspeed', parseFloat(this.value))" min="0" step="0.1" style="width: 100%; padding: 8px; background: var(--background-color); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary);">
+                </div>
+                <div>
+                    <label style="display: block; margin-bottom: 4px; font-size: 0.875rem; color: var(--text-secondary);">End Speed (m/s)</label>
+                    <input type="number" value="${step.end_airspeed || 0}" onchange="updateStepField(${index}, 'end_airspeed', parseFloat(this.value))" min="0" step="0.1" style="width: 100%; padding: 8px; background: var(--background-color); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary);">
+                </div>
+            `;
+        } else if (step.type === 'hold' || step.type === 'step') {
+            html += `
+                <div>
+                    <label style="display: block; margin-bottom: 4px; font-size: 0.875rem; color: var(--text-secondary);">Airspeed (m/s)</label>
+                    <input type="number" value="${step.airspeed || 0}" onchange="updateStepField(${index}, 'airspeed', parseFloat(this.value))" min="0" step="0.1" style="width: 100%; padding: 8px; background: var(--background-color); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary);">
+                </div>
+            `;
+        } else if (step.type === 'sine') {
+            html += `
+                <div>
+                    <label style="display: block; margin-bottom: 4px; font-size: 0.875rem; color: var(--text-secondary);">Center Speed (m/s)</label>
+                    <input type="number" value="${step.center_airspeed || 10}" onchange="updateStepField(${index}, 'center_airspeed', parseFloat(this.value))" min="0" step="0.1" style="width: 100%; padding: 8px; background: var(--background-color); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary);">
+                </div>
+                <div>
+                    <label style="display: block; margin-bottom: 4px; font-size: 0.875rem; color: var(--text-secondary);">Amplitude (m/s)</label>
+                    <input type="number" value="${step.amplitude || 5}" onchange="updateStepField(${index}, 'amplitude', parseFloat(this.value))" min="0" step="0.1" style="width: 100%; padding: 8px; background: var(--background-color); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary);">
+                </div>
+                <div>
+                    <label style="display: block; margin-bottom: 4px; font-size: 0.875rem; color: var(--text-secondary);">Period (s)</label>
+                    <input type="number" value="${step.period || 5}" onchange="updateStepField(${index}, 'period', parseFloat(this.value))" min="0.1" step="0.1" style="width: 100%; padding: 8px; background: var(--background-color); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary);">
+                </div>
+            `;
+        }
+        
+        // Servo angle control (always show, but gray out if not available)
+        html += `
+                <div>
+                    <label style="display: block; margin-bottom: 4px; font-size: 0.875rem; color: var(--text-secondary);">Servo Angle (°) <span style="opacity: 0.5;">[Future]</span></label>
+                    <input type="number" value="${step.servo_angle || 0}" onchange="updateStepField(${index}, 'servo_angle', parseFloat(this.value))" min="-90" max="90" step="1" style="width: 100%; padding: 8px; background: var(--background-color); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); opacity: 0.6;" title="Servo control not yet implemented">
+                </div>
+            </div>
+        `;
+        
+        stepCard.innerHTML = html;
+        container.appendChild(stepCard);
+    });
+}
+
+function updateStepType(index, type) {
+    sequenceSteps[index].type = type;
+    
+    // Set default values based on type
+    if (type === 'ramp') {
+        sequenceSteps[index].start_airspeed = sequenceSteps[index].start_airspeed || 0;
+        sequenceSteps[index].end_airspeed = sequenceSteps[index].end_airspeed || 10;
+    } else if (type === 'hold' || type === 'step') {
+        sequenceSteps[index].airspeed = sequenceSteps[index].airspeed || 10;
+    } else if (type === 'sine') {
+        sequenceSteps[index].center_airspeed = sequenceSteps[index].center_airspeed || 10;
+        sequenceSteps[index].amplitude = sequenceSteps[index].amplitude || 5;
+        sequenceSteps[index].period = sequenceSteps[index].period || 5;
+    }
+    
+    renderStepList();
+}
+
+function updateStepField(index, field, value) {
+    sequenceSteps[index][field] = value;
+}
+
+function moveStep(index, direction) {
+    const newIndex = index + direction;
+    if (newIndex < 0 || newIndex >= sequenceSteps.length) return;
+    
+    const temp = sequenceSteps[index];
+    sequenceSteps[index] = sequenceSteps[newIndex];
+    sequenceSteps[newIndex] = temp;
+    
+    renderStepList();
+}
+
+function removeStep(index) {
+    sequenceSteps.splice(index, 1);
+    renderStepList();
+}
+
+async function saveSequence() {
+    const name = document.getElementById('sequenceName').value.trim();
+    
+    if (!name) {
+        alert('Please enter a sequence name.');
+        return;
+    }
+    
+    if (sequenceSteps.length === 0) {
+        alert('Please add at least one step.');
+        return;
+    }
+    
+    const sequence = {
+        steps: sequenceSteps
+    };
+    
+    try {
+        const response = await fetch('/api/sequence/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name, sequence: sequence })
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            alert('Sequence saved successfully!');
+            switchSequenceTab('run');
+            loadSavedSequences();
+        } else {
+            alert('Error saving sequence: ' + data.message);
+        }
+    } catch (error) {
+        console.error('Error saving sequence:', error);
+        alert('Error saving sequence');
+    }
+}
+
+async function deleteCurrentSequence() {
+    const name = document.getElementById('sequenceName').value.trim();
+    
+    if (!name) {
+        alert('No sequence loaded to delete.');
+        return;
+    }
+    
+    if (!confirm(`Are you sure you want to delete the sequence "${name}"?`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/sequence/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name })
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            alert('Sequence deleted successfully!');
+            clearSequenceEditor();
+            switchSequenceTab('run');
+            loadSavedSequences();
+        } else {
+            alert('Error deleting sequence: ' + data.message);
+        }
+    } catch (error) {
+        console.error('Error deleting sequence:', error);
+        alert('Error deleting sequence');
+    }
+}
+
+function clearSequenceEditor() {
+    document.getElementById('sequenceName').value = '';
+    sequenceSteps = [];
+    renderStepList();
+}

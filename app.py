@@ -66,9 +66,23 @@ def init_database():
             timestamp REAL NOT NULL,
             sensor_id TEXT NOT NULL,
             value REAL NOT NULL,
+            sequence_name TEXT,
+            step_number INTEGER,
             PRIMARY KEY (timestamp, sensor_id)
         )
     ''')
+    
+    # Check if sequence columns exist (migration for existing databases)
+    cursor.execute("PRAGMA table_info(sensor_data)")
+    columns = [col[1] for col in cursor.fetchall()]
+    
+    if 'sequence_name' not in columns:
+        cursor.execute('ALTER TABLE sensor_data ADD COLUMN sequence_name TEXT')
+        print("Added sequence_name column to sensor_data table")
+    
+    if 'step_number' not in columns:
+        cursor.execute('ALTER TABLE sensor_data ADD COLUMN step_number INTEGER')
+        print("Added step_number column to sensor_data table")
     
     # Create indexes for fast time-range queries
     cursor.execute('''
@@ -90,10 +104,19 @@ def write_sensor_data_to_db(timestamp, sensor_data):
     Write sensor data to database.
     Adds to write queue for batch processing.
     """
+    # Get current sequence info if active
+    sequence_name = None
+    step_number = None
+    if sequence_state['active']:
+        sequence_name = sequence_state.get('current_sequence_name')
+        step_number = sequence_state.get('current_step_index')
+        if step_number is not None:
+            step_number = step_number + 1  # Convert 0-based to 1-based for export
+    
     with db_lock:
         for sensor_id, value in sensor_data.items():
             if sensor_id != 'timestamp':  # Skip timestamp field
-                db_write_queue.append((timestamp, sensor_id, value))
+                db_write_queue.append((timestamp, sensor_id, value, sequence_name, step_number))
 
 def flush_db_write_queue():
     """
@@ -113,7 +136,7 @@ def flush_db_write_queue():
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
         cursor.executemany(
-            'INSERT OR REPLACE INTO sensor_data (timestamp, sensor_id, value) VALUES (?, ?, ?)',
+            'INSERT OR REPLACE INTO sensor_data (timestamp, sensor_id, value, sequence_name, step_number) VALUES (?, ?, ?, ?, ?)',
             queue_copy
         )
         conn.commit()
@@ -403,6 +426,27 @@ _pwm_device = None
 
 # Safety timeout configuration (in seconds)
 FAN_SAFETY_TIMEOUT = 0  # Disabled - set to positive value to enable auto-stop
+
+# Sequence control state
+sequence_state = {
+    'active': False,
+    'paused': False,
+    'current_sequence': None,  # Currently loaded/running sequence
+    'current_sequence_name': None,  # Name of current sequence for export
+    'current_step_index': 0,
+    'step_start_time': None,
+    'loop_enabled': False,
+    'thread': None,
+    'stop_event': None
+}
+
+# Servo control state (for future implementation)
+servo_state = {
+    'enabled': False,
+    'current_angle': 0.0,  # degrees
+    'pin': None,
+    'pwm_instance': None
+}
 
 # PID Controller for airspeed control
 class PIDController:
@@ -3709,8 +3753,8 @@ def export_data():
         with open(filepath, 'w', newline='') as csvfile:
             csv_writer = csv.writer(csvfile)
             
-            # Write header: Timestamp, Sensor1, Sensor2, ...
-            csv_writer.writerow(['Timestamp'] + sensor_ids)
+            # Write header: Timestamp, Sequence, Step, Sensor1, Sensor2, ...
+            csv_writer.writerow(['Timestamp', 'Sequence', 'Step'] + sensor_ids)
             
             # Process in chunks to handle large datasets
             chunk_size = 1000
@@ -3722,23 +3766,27 @@ def export_data():
                 # Get all data for this chunk of timestamps
                 placeholders = ','.join('?' * len(chunk_timestamps))
                 cursor.execute(f'''
-                    SELECT timestamp, sensor_id, value 
+                    SELECT timestamp, sensor_id, value, sequence_name, step_number
                     FROM sensor_data 
                     WHERE timestamp IN ({placeholders})
                     ORDER BY timestamp, sensor_id
                 ''', chunk_timestamps)
                 
-                # Build data structure: {timestamp: {sensor_id: value}}
+                # Build data structure: {timestamp: {sensor_id: value, sequence_name: name, step_number: num}}
                 data_by_timestamp = {}
-                for ts, sensor_id, value in cursor.fetchall():
+                for ts, sensor_id, value, seq_name, step_num in cursor.fetchall():
                     if ts not in data_by_timestamp:
-                        data_by_timestamp[ts] = {}
+                        data_by_timestamp[ts] = {'sequence_name': seq_name, 'step_number': step_num}
                     data_by_timestamp[ts][sensor_id] = value
                 
                 # Write rows for this chunk
                 for ts in chunk_timestamps:
-                    row = [ts]
                     sensor_data = data_by_timestamp.get(ts, {})
+                    row = [
+                        ts,
+                        sensor_data.get('sequence_name', ''),  # Empty if no sequence
+                        sensor_data.get('step_number', '')  # Empty if no sequence
+                    ]
                     for sensor_id in sensor_ids:
                         row.append(sensor_data.get(sensor_id, ''))  # Empty string if no data
                     csv_writer.writerow(row)
@@ -3760,7 +3808,7 @@ def export_data():
             'filename': filename,
             'filepath': filepath,
             'rows_exported': total_rows,
-            'columns': len(sensor_ids) + 1  # +1 for timestamp column
+            'columns': len(sensor_ids) + 3  # +3 for timestamp, sequence, step columns
         })
     except PermissionError:
         return jsonify({'status': 'error', 'message': 'Permission denied. Drive may be read-only.'}), 500
@@ -4831,6 +4879,334 @@ def init_background_threads():
     logger.info("UDP discovery listener thread started")
     
     _threads_started = True
+
+# =============================================================================
+# Sequence Control System
+# =============================================================================
+
+SEQUENCES_FILE = 'sequences.json'
+
+def load_sequences():
+    """Load saved sequences from JSON file."""
+    if os.path.exists(SEQUENCES_FILE):
+        with open(SEQUENCES_FILE, 'r') as f:
+            return json.load(f)
+    return {}
+
+def save_sequences(sequences):
+    """Save sequences to JSON file."""
+    with open(SEQUENCES_FILE, 'w') as f:
+        json.dump(sequences, f, indent=2)
+
+def sequence_execution_thread():
+    """Execute sequence steps in background thread."""
+    global sequence_state, pid_state
+    
+    logger.info("Sequence execution thread started")
+    
+    while not sequence_state['stop_event'].is_set():
+        try:
+            if not sequence_state['active'] or sequence_state['paused']:
+                time.sleep(0.1)
+                continue
+            
+            sequence = sequence_state['current_sequence']
+            if not sequence or 'steps' not in sequence:
+                logger.error("Invalid sequence structure")
+                sequence_state['active'] = False
+                continue
+            
+            steps = sequence['steps']
+            step_index = sequence_state['current_step_index']
+            
+            # Check if sequence is complete
+            if step_index >= len(steps):
+                if sequence_state['loop_enabled']:
+                    # Loop back to beginning
+                    logger.info("Sequence complete - looping")
+                    sequence_state['current_step_index'] = 0
+                    sequence_state['step_start_time'] = time.time()
+                    socketio.emit('sequence_loop', {'timestamp': time.time()})
+                    continue
+                else:
+                    # Sequence finished
+                    logger.info("Sequence complete - stopping")
+                    sequence_state['active'] = False
+                    socketio.emit('sequence_complete', {'timestamp': time.time()})
+                    continue
+            
+            step = steps[step_index]
+            current_time = time.time()
+            
+            # Initialize step start time if needed
+            if sequence_state['step_start_time'] is None:
+                sequence_state['step_start_time'] = current_time
+                logger.info(f"Starting step {step_index + 1}/{len(steps)}: {step['type']}")
+            
+            elapsed = current_time - sequence_state['step_start_time']
+            duration = step.get('duration', 10)
+            
+            # Execute step based on type
+            step_type = step['type']
+            
+            if step_type == 'hold':
+                # Maintain constant airspeed
+                target_speed = step.get('airspeed', 10.0)
+                if elapsed < duration:
+                    update_pid_setpoint(target_speed)
+                else:
+                    # Step complete, move to next
+                    sequence_state['current_step_index'] += 1
+                    sequence_state['step_start_time'] = None
+                    
+            elif step_type == 'ramp':
+                # Linear ramp from start to end airspeed
+                start_speed = step.get('start_airspeed', 0.0)
+                end_speed = step.get('end_airspeed', 20.0)
+                
+                if elapsed < duration:
+                    progress = elapsed / duration
+                    target_speed = start_speed + (end_speed - start_speed) * progress
+                    update_pid_setpoint(target_speed)
+                else:
+                    # Ensure we hit final value
+                    update_pid_setpoint(end_speed)
+                    sequence_state['current_step_index'] += 1
+                    sequence_state['step_start_time'] = None
+                    
+            elif step_type == 'step':
+                # Instant step change
+                target_speed = step.get('airspeed', 10.0)
+                if elapsed < duration:
+                    update_pid_setpoint(target_speed)
+                else:
+                    sequence_state['current_step_index'] += 1
+                    sequence_state['step_start_time'] = None
+                    
+            elif step_type == 'sine':
+                # Sinusoidal oscillation
+                center_speed = step.get('center_airspeed', 10.0)
+                amplitude = step.get('amplitude', 5.0)
+                period = step.get('period', 5.0)  # seconds for one complete cycle
+                
+                if elapsed < duration:
+                    # Calculate sine wave position
+                    angle = (elapsed / period) * 2 * math.pi
+                    target_speed = center_speed + amplitude * math.sin(angle)
+                    target_speed = max(0.0, target_speed)  # Clamp to positive
+                    update_pid_setpoint(target_speed)
+                else:
+                    sequence_state['current_step_index'] += 1
+                    sequence_state['step_start_time'] = None
+            
+            # Handle servo angle (placeholder for future implementation)
+            if 'servo_angle' in step and servo_state['enabled']:
+                # TODO: Implement servo control when hardware is connected
+                pass
+            
+            # Emit progress update
+            progress = min(100, (elapsed / duration) * 100) if duration > 0 else 100
+            socketio.emit('sequence_progress', {
+                'step_index': step_index,
+                'step_count': len(steps),
+                'step_progress': progress,
+                'elapsed': elapsed,
+                'duration': duration
+            })
+            
+            time.sleep(0.1)  # 10Hz update rate
+            
+        except Exception as e:
+            logger.error(f"Error in sequence execution: {e}")
+            sequence_state['active'] = False
+            time.sleep(1)
+    
+    logger.info("Sequence execution thread stopped")
+
+def update_pid_setpoint(target_airspeed):
+    """Update PID setpoint if PID is running."""
+    if pid_state['running']:
+        pid_state['target_airspeed'] = target_airspeed
+        pid_state['controller'].setpoint = target_airspeed
+
+@app.route('/api/sequence/list', methods=['GET'])
+def get_sequences():
+    """Get list of all saved sequences."""
+    try:
+        sequences = load_sequences()
+        return jsonify({'status': 'success', 'sequences': sequences})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/sequence/save', methods=['POST'])
+def save_sequence():
+    """Save a new or updated sequence."""
+    try:
+        data = request.get_json()
+        name = data.get('name')
+        sequence = data.get('sequence')
+        
+        if not name or not sequence:
+            return jsonify({'status': 'error', 'message': 'Name and sequence are required'}), 400
+        
+        # Validate sequence structure
+        if 'steps' not in sequence:
+            return jsonify({'status': 'error', 'message': 'Sequence must contain steps'}), 400
+        
+        sequences = load_sequences()
+        sequences[name] = sequence
+        save_sequences(sequences)
+        
+        return jsonify({'status': 'success', 'message': f'Sequence "{name}" saved'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/sequence/delete', methods=['POST'])
+def delete_sequence():
+    """Delete a saved sequence."""
+    try:
+        data = request.get_json()
+        name = data.get('name')
+        
+        if not name:
+            return jsonify({'status': 'error', 'message': 'Name is required'}), 400
+        
+        sequences = load_sequences()
+        if name in sequences:
+            del sequences[name]
+            save_sequences(sequences)
+            return jsonify({'status': 'success', 'message': f'Sequence "{name}" deleted'})
+        else:
+            return jsonify({'status': 'error', 'message': f'Sequence "{name}" not found'}), 404
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/sequence/start', methods=['POST'])
+def start_sequence():
+    """Start sequence playback."""
+    try:
+        data = request.get_json()
+        sequence_name = data.get('name')
+        loop_enabled = data.get('loop', False)
+        
+        if not sequence_name:
+            return jsonify({'status': 'error', 'message': 'Sequence name is required'}), 400
+        
+        sequences = load_sequences()
+        if sequence_name not in sequences:
+            return jsonify({'status': 'error', 'message': f'Sequence "{sequence_name}" not found'}), 404
+        
+        sequence = sequences[sequence_name]
+        
+        # Ensure PID is running
+        if not pid_state['running']:
+            return jsonify({'status': 'error', 'message': 'PID control must be active to run sequences'}), 400
+        
+        # Stop existing sequence if running
+        if sequence_state['active']:
+            sequence_state['active'] = False
+            if sequence_state['thread'] and sequence_state['thread'].is_alive():
+                if sequence_state['stop_event']:
+                    sequence_state['stop_event'].set()
+                sequence_state['thread'].join(timeout=2)
+        
+        # Initialize sequence state
+        sequence_state['active'] = True
+        sequence_state['paused'] = False
+        sequence_state['current_sequence'] = sequence
+        sequence_state['current_sequence_name'] = sequence_name  # Store name for export
+        sequence_state['current_step_index'] = 0
+        sequence_state['step_start_time'] = None
+        sequence_state['loop_enabled'] = loop_enabled
+        sequence_state['stop_event'] = threading.Event()
+        
+        # Start execution thread
+        sequence_state['thread'] = threading.Thread(target=sequence_execution_thread, daemon=True)
+        sequence_state['thread'].start()
+        
+        logger.info(f"Started sequence: {sequence_name} (loop: {loop_enabled})")
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Sequence "{sequence_name}" started',
+            'sequence': sequence
+        })
+        
+    except Exception as e:
+        logger.error(f"Error starting sequence: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/sequence/pause', methods=['POST'])
+def pause_sequence():
+    """Pause or resume sequence playback."""
+    try:
+        if not sequence_state['active']:
+            return jsonify({'status': 'error', 'message': 'No sequence is running'}), 400
+        
+        sequence_state['paused'] = not sequence_state['paused']
+        
+        status = 'paused' if sequence_state['paused'] else 'resumed'
+        logger.info(f"Sequence {status}")
+        
+        return jsonify({'status': 'success', 'paused': sequence_state['paused']})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/sequence/stop', methods=['POST'])
+def stop_sequence():
+    """Stop sequence playback."""
+    try:
+        if not sequence_state['active']:
+            return jsonify({'status': 'success', 'message': 'No sequence is running'})
+        
+        sequence_state['active'] = False
+        sequence_state['paused'] = False
+        sequence_state['current_sequence_name'] = None  # Clear sequence name
+        
+        if sequence_state['stop_event']:
+            sequence_state['stop_event'].set()
+        
+        if sequence_state['thread'] and sequence_state['thread'].is_alive():
+            sequence_state['thread'].join(timeout=2)
+        
+        logger.info("Sequence stopped")
+        
+        return jsonify({'status': 'success', 'message': 'Sequence stopped'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/sequence/status', methods=['GET'])
+def get_sequence_status():
+    """Get current sequence status."""
+    try:
+        status = {
+            'active': sequence_state['active'],
+            'paused': sequence_state['paused'],
+            'loop_enabled': sequence_state['loop_enabled']
+        }
+        
+        if sequence_state['active'] and sequence_state['current_sequence']:
+            sequence = sequence_state['current_sequence']
+            step_index = sequence_state['current_step_index']
+            steps = sequence.get('steps', [])
+            
+            status['step_index'] = step_index
+            status['step_count'] = len(steps)
+            
+            if step_index < len(steps):
+                current_step = steps[step_index]
+                status['current_step'] = current_step
+                
+                if sequence_state['step_start_time']:
+                    elapsed = time.time() - sequence_state['step_start_time']
+                    duration = current_step.get('duration', 10)
+                    status['step_elapsed'] = elapsed
+                    status['step_duration'] = duration
+                    status['step_progress'] = min(100, (elapsed / duration) * 100) if duration > 0 else 100
+        
+        return jsonify({'status': 'success', 'sequence_status': status})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 # Gunicorn server hook - called after worker processes are forked
 def post_fork(server, worker):
