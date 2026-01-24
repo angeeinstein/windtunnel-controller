@@ -1107,6 +1107,10 @@ function updateSpeedDisplay(value) {
     document.getElementById('speedValue').textContent = value;
 }
 
+// Global state tracking
+let pidRunning = false;
+let fanRunning = false;
+
 // Mode Toggle Functions
 function toggleControlMode() {
     const toggle = document.getElementById('modeToggle');
@@ -1148,7 +1152,6 @@ function updateUnifiedStatus() {
     
     if (toggle.checked) {
         // Manual mode - show fan status
-        const fanRunning = document.getElementById('fanIndicator')?.style.background === 'var(--primary-color)';
         indicator.style.background = fanRunning ? 'var(--primary-color)' : 'var(--text-secondary)';
         indicator.style.animation = fanRunning ? 'pulse 1.5s ease-in-out infinite' : 'none';
         statusText.style.color = fanRunning ? 'var(--primary-color)' : 'var(--text-secondary)';
@@ -1157,7 +1160,6 @@ function updateUnifiedStatus() {
         statusInfo.style.color = 'var(--success-color)';
     } else {
         // PID mode - show PID status
-        const pidRunning = document.getElementById('pidIndicator')?.style.background === 'var(--accent-color)';
         indicator.style.background = pidRunning ? 'var(--accent-color)' : 'var(--text-secondary)';
         indicator.style.animation = pidRunning ? 'pulse 1.5s ease-in-out infinite' : 'none';
         statusText.style.color = pidRunning ? 'var(--accent-color)' : 'var(--text-secondary)';
@@ -1249,6 +1251,9 @@ async function stopFan() {
 }
 
 function updateFanStatus(isRunning, speed) {
+    // Update global state
+    fanRunning = isRunning;
+    
     // Create hidden legacy indicators if they don't exist (for compatibility)
     let indicator = document.getElementById('fanIndicator');
     let statusText = document.getElementById('fanStatusText');
@@ -1379,6 +1384,9 @@ async function stopPID() {
 }
 
 function updatePIDStatus(isRunning, data = {}) {
+    // Update global state
+    pidRunning = isRunning;
+    
     // Create hidden legacy indicators if they don't exist (for compatibility)
     let indicator = document.getElementById('pidIndicator');
     let statusText = document.getElementById('pidStatusText');
