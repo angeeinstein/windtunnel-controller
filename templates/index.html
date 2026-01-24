@@ -48,64 +48,72 @@
                 <!-- Sensor cards will be dynamically generated here -->
             </div>
 
-            <!-- Control Panel (for future expansion) -->
+            <!-- Unified Control Panel -->
             <div class="control-panel">
-                <h2>Fan Control</h2>
-                <div class="fan-status" id="fanStatus" style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px; padding: 12px; background: var(--card-background); border-radius: 8px;">
-                    <div id="fanIndicator" style="width: 16px; height: 16px; border-radius: 50%; background: var(--text-secondary);"></div>
-                    <span id="fanStatusText" style="color: var(--text-secondary); font-weight: 600;">Fan: OFF</span>
-                    <span id="safetyIndicator" style="margin-left: auto; font-size: 0.8rem; color: var(--success-color); opacity: 0.7;" title="Safety monitoring active - fan will auto-stop if connection is lost">&#128274; Safety Active</span>
-                </div>
-                <div class="speed-control" style="margin-bottom: 16px;">
-                    <label for="fanSpeed" style="display: block; margin-bottom: 8px; font-weight: 600;">Speed: <span id="speedValue">0</span>%</label>
-                    <input type="range" id="fanSpeed" min="0" max="100" value="0" 
-                           style="width: 100%; height: 8px; border-radius: 4px; background: var(--border-color); outline: none; -webkit-appearance: none;"
-                           oninput="updateSpeedDisplay(this.value)">
-                </div>
-                <div class="controls-grid">
-                    <button class="control-btn" id="startBtn" onclick="startFan()">Start</button>
-                    <button class="control-btn danger-btn" id="stopBtn" onclick="stopFan()">Stop</button>
-                </div>
-            </div>
-
-            <!-- Airspeed Control Panel -->
-            <div class="control-panel" id="airspeedControlPanel" style="margin-top: 24px;">
-                <h2>Airspeed Control (PID)</h2>
-                <div class="pid-status" id="pidStatus" style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px; padding: 12px; background: var(--card-background); border-radius: 8px;">
-                    <div id="pidIndicator" style="width: 16px; height: 16px; border-radius: 50%; background: var(--text-secondary);"></div>
-                    <span id="pidStatusText" style="color: var(--text-secondary); font-weight: 600;">PID: OFF</span>
-                    <span id="pidSensorName" style="margin-left: auto; font-size: 0.8rem; color: var(--text-secondary); opacity: 0.7;"></span>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+                    <h2 style="margin: 0;" id="controlPanelTitle">Airspeed Control (PID)</h2>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
+                        <span style="font-size: 0.9rem; color: var(--text-secondary);">Manual</span>
+                        <div style="position: relative; width: 48px; height: 24px; background: var(--accent-color); border-radius: 12px; transition: background 0.3s;" id="modeToggleBg">
+                            <input type="checkbox" id="modeToggle" onchange="toggleControlMode()" style="opacity: 0; width: 0; height: 0;">
+                            <div style="position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; background: white; border-radius: 50%; transition: transform 0.3s;" id="modeToggleSlider"></div>
+                        </div>
+                    </label>
                 </div>
                 
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 16px; padding: 12px; background: var(--card-background); border-radius: 8px;">
-                    <div>
-                        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px;">Target</div>
-                        <div id="pidTarget" style="font-size: 1.2rem; font-weight: 600; color: var(--accent-color);">--</div>
+                <!-- Status Display -->
+                <div class="status-display" id="statusDisplay" style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px; padding: 12px; background: var(--card-background); border-radius: 8px;">
+                    <div id="statusIndicator" style="width: 16px; height: 16px; border-radius: 50%; background: var(--text-secondary);"></div>
+                    <span id="statusText" style="color: var(--text-secondary); font-weight: 600;">PID: OFF</span>
+                    <span id="statusInfo" style="margin-left: auto; font-size: 0.8rem; color: var(--text-secondary); opacity: 0.7;"></span>
+                </div>
+                
+                <!-- PID Mode Controls (default visible) -->
+                <div id="pidControls">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 16px; padding: 12px; background: var(--card-background); border-radius: 8px;">
+                        <div>
+                            <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px;">Target</div>
+                            <div id="pidTarget" style="font-size: 1.2rem; font-weight: 600; color: var(--accent-color);">--</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px;">Actual</div>
+                            <div id="pidActual" style="font-size: 1.2rem; font-weight: 600; color: var(--text-primary);">--</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px;">Fan</div>
+                            <div id="pidFanSpeed" style="font-size: 1.2rem; font-weight: 600; color: var(--primary-color);">--</div>
+                        </div>
                     </div>
-                    <div>
-                        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px;">Actual</div>
-                        <div id="pidActual" style="font-size: 1.2rem; font-weight: 600; color: var(--text-primary);">--</div>
+                    
+                    <div class="speed-control" style="margin-bottom: 16px;">
+                        <label for="targetAirspeed" style="display: block; margin-bottom: 8px; font-weight: 600;">Target Airspeed: <span id="targetValue">10.0</span> m/s</label>
+                        <input type="range" id="targetAirspeed" min="0" max="30" step="0.5" value="10" 
+                               style="width: 100%; height: 8px; border-radius: 4px; background: var(--border-color); outline: none; -webkit-appearance: none;"
+                               oninput="updateTargetDisplay(this.value)">
                     </div>
-                    <div>
-                        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px;">Fan</div>
-                        <div id="pidFanSpeed" style="font-size: 1.2rem; font-weight: 600; color: var(--primary-color);">--</div>
+                    
+                    <div class="controls-grid">
+                        <button class="control-btn" id="pidStartBtn" onclick="startPID()" style="background: var(--accent-color);">Start</button>
+                        <button class="control-btn danger-btn" id="pidStopBtn" onclick="stopPID()">Stop</button>
+                    </div>
+                    
+                    <div style="margin-top: 12px; text-align: center;">
+                        <a href="/settings" style="color: var(--accent-color); text-decoration: none; font-size: 0.9rem;">⚙️ Configure PID Settings</a>
                     </div>
                 </div>
                 
-                <div class="speed-control" style="margin-bottom: 16px;">
-                    <label for="targetAirspeed" style="display: block; margin-bottom: 8px; font-weight: 600;">Target Airspeed: <span id="targetValue">10.0</span> m/s</label>
-                    <input type="range" id="targetAirspeed" min="0" max="30" step="0.5" value="10" 
-                           style="width: 100%; height: 8px; border-radius: 4px; background: var(--border-color); outline: none; -webkit-appearance: none;"
-                           oninput="updateTargetDisplay(this.value)">
-                </div>
-                
-                <div class="controls-grid">
-                    <button class="control-btn" id="pidStartBtn" onclick="startPID()" style="background: var(--accent-color);">Start PID</button>
-                    <button class="control-btn danger-btn" id="pidStopBtn" onclick="stopPID()">Stop PID</button>
-                </div>
-                
-                <div style="margin-top: 12px; text-align: center;">
-                    <a href="/settings" style="color: var(--accent-color); text-decoration: none; font-size: 0.9rem;">⚙️ Configure PID Settings</a>
+                <!-- Manual Mode Controls (hidden by default) -->
+                <div id="manualControls" style="display: none;">
+                    <div class="speed-control" style="margin-bottom: 16px;">
+                        <label for="fanSpeed" style="display: block; margin-bottom: 8px; font-weight: 600;">Speed: <span id="speedValue">0</span>%</label>
+                        <input type="range" id="fanSpeed" min="0" max="100" value="0" 
+                               style="width: 100%; height: 8px; border-radius: 4px; background: var(--border-color); outline: none; -webkit-appearance: none;"
+                               oninput="updateSpeedDisplay(this.value)">
+                    </div>
+                    <div class="controls-grid">
+                        <button class="control-btn" id="startBtn" onclick="startFan()">Start</button>
+                        <button class="control-btn danger-btn" id="stopBtn" onclick="stopFan()">Stop</button>
+                    </div>
                 </div>
             </div>
         </main>

@@ -1107,6 +1107,67 @@ function updateSpeedDisplay(value) {
     document.getElementById('speedValue').textContent = value;
 }
 
+// Mode Toggle Functions
+function toggleControlMode() {
+    const toggle = document.getElementById('modeToggle');
+    const pidControls = document.getElementById('pidControls');
+    const manualControls = document.getElementById('manualControls');
+    const title = document.getElementById('controlPanelTitle');
+    const toggleBg = document.getElementById('modeToggleBg');
+    const toggleSlider = document.getElementById('modeToggleSlider');
+    
+    // PID mode is default (toggle unchecked)
+    if (toggle.checked) {
+        // Switch to Manual mode
+        pidControls.style.display = 'none';
+        manualControls.style.display = 'block';
+        title.textContent = 'Manual Fan Control';
+        toggleBg.style.background = 'var(--primary-color)';
+        toggleSlider.style.transform = 'translateX(24px)';
+        
+        // Update status display for manual mode
+        updateUnifiedStatus();
+    } else {
+        // Switch to PID mode
+        pidControls.style.display = 'block';
+        manualControls.style.display = 'none';
+        title.textContent = 'Airspeed Control (PID)';
+        toggleBg.style.background = 'var(--accent-color)';
+        toggleSlider.style.transform = 'translateX(0)';
+        
+        // Update status display for PID mode
+        updateUnifiedStatus();
+    }
+}
+
+function updateUnifiedStatus() {
+    const toggle = document.getElementById('modeToggle');
+    const indicator = document.getElementById('statusIndicator');
+    const statusText = document.getElementById('statusText');
+    const statusInfo = document.getElementById('statusInfo');
+    
+    if (toggle.checked) {
+        // Manual mode - show fan status
+        const fanRunning = document.getElementById('fanIndicator')?.style.background === 'var(--primary-color)';
+        indicator.style.background = fanRunning ? 'var(--primary-color)' : 'var(--text-secondary)';
+        indicator.style.animation = fanRunning ? 'pulse 1.5s ease-in-out infinite' : 'none';
+        statusText.style.color = fanRunning ? 'var(--primary-color)' : 'var(--text-secondary)';
+        statusText.textContent = fanRunning ? 'FAN: ON' : 'FAN: OFF';
+        statusInfo.textContent = '🛡️ Safety Active';
+        statusInfo.style.color = 'var(--success-color)';
+    } else {
+        // PID mode - show PID status
+        const pidRunning = document.getElementById('pidIndicator')?.style.background === 'var(--accent-color)';
+        indicator.style.background = pidRunning ? 'var(--accent-color)' : 'var(--text-secondary)';
+        indicator.style.animation = pidRunning ? 'pulse 1.5s ease-in-out infinite' : 'none';
+        statusText.style.color = pidRunning ? 'var(--accent-color)' : 'var(--text-secondary)';
+        statusText.textContent = pidRunning ? 'PID: ACTIVE' : 'PID: OFF';
+        const sensorName = document.getElementById('pidSensorName')?.textContent || '';
+        statusInfo.textContent = sensorName;
+        statusInfo.style.color = 'var(--text-secondary)';
+    }
+}
+
 async function startFan() {
     // Check if PID is running first
     try {
@@ -1188,20 +1249,41 @@ async function stopFan() {
 }
 
 function updateFanStatus(isRunning, speed) {
-    const indicator = document.getElementById('fanIndicator');
-    const statusText = document.getElementById('fanStatusText');
+    // Create hidden legacy indicators if they don't exist (for compatibility)
+    let indicator = document.getElementById('fanIndicator');
+    let statusText = document.getElementById('fanStatusText');
+    
+    if (!indicator) {
+        indicator = document.createElement('div');
+        indicator.id = 'fanIndicator';
+        indicator.style.display = 'none';
+        document.body.appendChild(indicator);
+    }
+    if (!statusText) {
+        statusText = document.createElement('span');
+        statusText.id = 'fanStatusText';
+        statusText.style.display = 'none';
+        document.body.appendChild(statusText);
+    }
     
     if (isRunning) {
-        indicator.style.background = 'var(--success-color)';
+        indicator.style.background = 'var(--primary-color)';
         indicator.style.animation = 'pulse 1.5s ease-in-out infinite';
-        statusText.style.color = 'var(--success-color)';
+        statusText.style.color = 'var(--primary-color)';
         statusText.textContent = `Fan: ON (${speed}%)`;
+        
+        // Update speed display
+        document.getElementById('fanSpeed').value = speed;
+        document.getElementById('speedValue').textContent = speed;
     } else {
         indicator.style.background = 'var(--text-secondary)';
         indicator.style.animation = 'none';
         statusText.style.color = 'var(--text-secondary)';
         statusText.textContent = 'Fan: OFF';
     }
+    
+    // Update unified status display
+    updateUnifiedStatus();
 }
 
 // Load fan status on page load
@@ -1297,8 +1379,29 @@ async function stopPID() {
 }
 
 function updatePIDStatus(isRunning, data = {}) {
-    const indicator = document.getElementById('pidIndicator');
-    const statusText = document.getElementById('pidStatusText');
+    // Create hidden legacy indicators if they don't exist (for compatibility)
+    let indicator = document.getElementById('pidIndicator');
+    let statusText = document.getElementById('pidStatusText');
+    let sensorName = document.getElementById('pidSensorName');
+    
+    if (!indicator) {
+        indicator = document.createElement('div');
+        indicator.id = 'pidIndicator';
+        indicator.style.display = 'none';
+        document.body.appendChild(indicator);
+    }
+    if (!statusText) {
+        statusText = document.createElement('span');
+        statusText.id = 'pidStatusText';
+        statusText.style.display = 'none';
+        document.body.appendChild(statusText);
+    }
+    if (!sensorName) {
+        sensorName = document.createElement('span');
+        sensorName.id = 'pidSensorName';
+        sensorName.style.display = 'none';
+        document.body.appendChild(sensorName);
+    }
     
     // Enable/disable manual fan controls based on PID state
     const startBtn = document.getElementById('startBtn');
@@ -1331,6 +1434,9 @@ function updatePIDStatus(isRunning, data = {}) {
         if (data.fan_speed !== undefined) {
             document.getElementById('pidFanSpeed').textContent = data.fan_speed.toFixed(0) + '%';
         }
+        if (data.sensor_id) {
+            sensorName.textContent = 'Sensor: ' + data.sensor_id;
+        }
     } else {
         indicator.style.background = 'var(--text-secondary)';
         indicator.style.animation = 'none';
@@ -1353,6 +1459,9 @@ function updatePIDStatus(isRunning, data = {}) {
         document.getElementById('pidActual').textContent = '--';
         document.getElementById('pidFanSpeed').textContent = '--';
     }
+    
+    // Update unified status display
+    updateUnifiedStatus();
 }
 
 // Load PID status on page load
