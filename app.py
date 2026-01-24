@@ -5025,7 +5025,7 @@ def sequence_execution_thread():
 
 def update_pid_setpoint(target_airspeed):
     """Update PID setpoint if PID is running."""
-    if pid_state['running']:
+    if pid_state.get('enabled', False) and pid_state.get('controller'):
         pid_state['target_airspeed'] = target_airspeed
         pid_state['controller'].setpoint = target_airspeed
 
@@ -5099,7 +5099,7 @@ def start_sequence():
         sequence = sequences[sequence_name]
         
         # Ensure PID is running
-        if not pid_state['running']:
+        if not pid_state.get('enabled', False):
             return jsonify({'status': 'error', 'message': 'PID control must be active to run sequences'}), 400
         
         # Stop existing sequence if running
