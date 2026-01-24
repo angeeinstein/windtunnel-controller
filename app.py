@@ -1522,17 +1522,25 @@ def auto_create_udp_sensor(sensor_id, port, source_ip):
     try:
         # Check if sensor was manually deleted (don't auto-recreate)
         if sensor_id in deleted_udp_sensors:
+            print(f"UDP sensor {sensor_id} was deleted, not auto-creating")
             return
         
         # Check if this is a composite sensor (e.g., "esp32_sensor_063C_lift")
         # and if the base sensor or any variant was deleted
         if '_' in sensor_id:
-            # Check all deleted sensors for matches with same base
-            base_pattern = sensor_id.rsplit('_', 1)[0]  # "esp32_sensor_063C" from "esp32_sensor_063C_lift"
-            for deleted_id in deleted_udp_sensors:
-                if deleted_id.startswith(base_pattern + '_'):
-                    # Another sensor from this device was deleted, don't auto-create this one
-                    return
+            # Check all deleted sensors for matches with same base or exact match
+            # Extract device ID (everything before the last underscore)
+            parts = sensor_id.split('_')
+            # Try different base patterns (e.g., "esp32_sensor_063C" from "esp32_sensor_063C_lift")
+            for i in range(len(parts) - 1):
+                base_pattern = '_'.join(parts[:i+1])
+                for deleted_id in deleted_udp_sensors:
+                    # Check if deleted sensor starts with same base OR if base starts with deleted pattern
+                    if (deleted_id.startswith(base_pattern + '_') or 
+                        sensor_id.startswith(deleted_id + '_') or
+                        deleted_id.startswith(sensor_id)):
+                        print(f"UDP sensor {sensor_id} matches deleted pattern {deleted_id}, not auto-creating")
+                        return
         
         # Check if sensor already exists
         sensors = current_settings.get('sensors', [])
@@ -1923,6 +1931,15 @@ def save_settings_to_file(settings):
     try:
         with open(SETTINGS_FILE, 'w') as f:
             json.dump(settings, f, indent=2)
+        
+        # Also save deleted_udp_sensors to a separate file for persistence
+        try:
+            deleted_sensors_file = 'deleted_udp_sensors.json'
+            with open(deleted_sensors_file, 'w') as f:
+                json.dump(list(deleted_udp_sensors), f)
+        except Exception as e:
+            print(f"Error saving deleted UDP sensors list: {e}")
+        
         return True
     except Exception as e:
         print(f"Error saving settings: {e}")
@@ -1930,6 +1947,17 @@ def save_settings_to_file(settings):
 
 # Global settings
 current_settings = load_settings()
+
+# Load deleted UDP sensors list
+try:
+    deleted_sensors_file = 'deleted_udp_sensors.json'
+    if os.path.exists(deleted_sensors_file):
+        with open(deleted_sensors_file, 'r') as f:
+            deleted_udp_sensors = set(json.load(f))
+            print(f"Loaded {len(deleted_udp_sensors)} deleted UDP sensor IDs")
+except Exception as e:
+    print(f"Error loading deleted UDP sensors list: {e}")
+    deleted_udp_sensors = set()
 
 # Initialize PID state from settings
 pid_state['airspeed_sensor_id'] = current_settings.get('airspeed_sensor_id')
