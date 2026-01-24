@@ -1877,15 +1877,6 @@ async function startSequence() {
         return;
     }
     
-    // Check if PID is running
-    const pidResponse = await fetch('/api/pid/status');
-    const pidStatus = await pidResponse.json();
-    
-    if (!pidStatus.running) {
-        alert('PID control must be active to run sequences. Please start PID mode first.');
-        return;
-    }
-    
     const loop = document.getElementById('sequenceLoopCheckbox').checked;
     
     try {
