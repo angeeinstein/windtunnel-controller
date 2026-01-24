@@ -1108,6 +1108,18 @@ function updateSpeedDisplay(value) {
 }
 
 async function startFan() {
+    // Check if PID is running first
+    try {
+        const pidStatusResp = await fetch('/api/pid/status');
+        const pidStatus = await pidStatusResp.json();
+        if (pidStatus.running) {
+            alert('Cannot start manual control - PID is active. Stop PID first.');
+            return;
+        }
+    } catch (e) {
+        // Continue if PID check fails
+    }
+    
     const speed = document.getElementById('fanSpeed').value;
     try {
         const response = await fetch('/api/fan/start', {
@@ -1136,8 +1148,15 @@ async function stopFan() {
         }
         
         // Stop PID if running
+        let pidWasRunning = false;
         try {
-            await fetch('/api/pid/stop', { method: 'POST' });
+            const pidStatusResp = await fetch('/api/pid/status');
+            const pidStatus = await pidStatusResp.json();
+            pidWasRunning = pidStatus.running;
+            
+            if (pidWasRunning) {
+                await fetch('/api/pid/stop', { method: 'POST' });
+            }
         } catch (e) {
             // Ignore if PID endpoint fails
         }
@@ -1150,6 +1169,10 @@ async function stopFan() {
         
         if (data.status === 'success') {
             updateFanStatus(false, 0);
+            // Update PID status if it was running
+            if (pidWasRunning) {
+                updatePIDStatus(false);
+            }
         } else {
             alert('Failed to stop fan: ' + (data.message || data.error || 'Unknown error'));
         }
@@ -1277,11 +1300,26 @@ function updatePIDStatus(isRunning, data = {}) {
     const indicator = document.getElementById('pidIndicator');
     const statusText = document.getElementById('pidStatusText');
     
+    // Enable/disable manual fan controls based on PID state
+    const startBtn = document.getElementById('startBtn');
+    const fanSpeedSlider = document.getElementById('fanSpeed');
+    
     if (isRunning) {
         indicator.style.background = 'var(--accent-color)';
         indicator.style.animation = 'pulse 1.5s ease-in-out infinite';
         statusText.style.color = 'var(--accent-color)';
         statusText.textContent = 'PID: ACTIVE';
+        
+        // Disable manual controls when PID is active
+        if (startBtn) {
+            startBtn.disabled = true;
+            startBtn.style.opacity = '0.5';
+            startBtn.style.cursor = 'not-allowed';
+        }
+        if (fanSpeedSlider) {
+            fanSpeedSlider.disabled = true;
+            fanSpeedSlider.style.opacity = '0.5';
+        }
         
         // Update values if provided
         if (data.target_speed !== undefined) {
@@ -1298,6 +1336,17 @@ function updatePIDStatus(isRunning, data = {}) {
         indicator.style.animation = 'none';
         statusText.style.color = 'var(--text-secondary)';
         statusText.textContent = 'PID: OFF';
+        
+        // Re-enable manual controls when PID is off
+        if (startBtn) {
+            startBtn.disabled = false;
+            startBtn.style.opacity = '1';
+            startBtn.style.cursor = 'pointer';
+        }
+        if (fanSpeedSlider) {
+            fanSpeedSlider.disabled = false;
+            fanSpeedSlider.style.opacity = '1';
+        }
         
         // Reset values
         document.getElementById('pidTarget').textContent = '--';
