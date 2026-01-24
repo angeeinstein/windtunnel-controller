@@ -1146,9 +1146,9 @@ function toggleControlMode() {
 
 function updateUnifiedStatus() {
     const toggle = document.getElementById('modeToggle');
-    const indicator = document.getElementById('statusIndicator');
-    const statusText = document.getElementById('statusText');
-    const statusInfo = document.getElementById('statusInfo');
+    const indicator = document.getElementById('controlStatusIndicator');
+    const statusText = document.getElementById('controlStatusText');
+    const statusInfo = document.getElementById('controlStatusInfo');
     
     if (toggle.checked) {
         // Manual mode - show fan status
