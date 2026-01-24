@@ -1218,15 +1218,25 @@ async function startPID() {
         const statusResponse = await fetch('/api/pid/status');
         const statusData = await statusResponse.json();
         
-        // If already running, stop it first
+        // If already running, just update setpoint (no restart)
         if (statusData.running) {
-            const stopResponse = await fetch('/api/pid/stop', { method: 'POST' });
-            await stopResponse.json();
-            // Small delay to ensure clean stop
-            await new Promise(resolve => setTimeout(resolve, 200));
+            const response = await fetch('/api/pid/setpoint', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ target_airspeed: targetSpeed })
+            });
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                // Update UI immediately
+                document.getElementById('pidTarget').textContent = targetSpeed.toFixed(1) + ' m/s';
+            } else {
+                alert('Failed to update setpoint: ' + (data.message || data.error || 'Unknown error'));
+            }
+            return;
         }
         
-        // Now start with new target
+        // Start PID for the first time
         const response = await fetch('/api/pid/start', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

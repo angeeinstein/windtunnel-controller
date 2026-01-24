@@ -3217,6 +3217,32 @@ def pid_status():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+@app.route('/api/pid/setpoint', methods=['POST'])
+def pid_update_setpoint():
+    """Update PID setpoint without restarting (prevents fan stopping)"""
+    global pid_state
+    try:
+        data = request.get_json()
+        target_airspeed = float(data.get('target_airspeed', 10.0))
+        
+        if not pid_state['enabled']:
+            return jsonify({'status': 'error', 'message': 'PID control not running'}), 400
+        
+        # Update setpoint on running controller (rate limiting will smooth the transition)
+        pid_state['controller'].setpoint = target_airspeed
+        pid_state['target_airspeed'] = target_airspeed
+        
+        logger.info(f"PID setpoint updated to {target_airspeed} m/s (rate limited)")
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Setpoint updated to {target_airspeed} m/s',
+            'target_airspeed': target_airspeed
+        })
+    except Exception as e:
+        logger.error(f"Error updating PID setpoint: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 @app.route('/api/pid/settings', methods=['GET', 'POST'])
 def pid_settings():
     """Get or update PID settings"""
@@ -3467,11 +3493,13 @@ def pid_autotune():
                     
                     logger.info(f"Auto-tune measurements from {len(all_ku_values)} setpoints: Ku={avg_ku:.2f}, Tu={avg_tu:.2f}s")
                     
-                    # Ziegler-Nichols PID tuning rules (scaled down 2x for smoother response)
-                    # Relay-based auto-tune can produce slightly aggressive gains
-                    pid_state['auto_tune_kp'] = 0.3 * avg_ku
-                    pid_state['auto_tune_ki'] = 0.6 * avg_ku / avg_tu
-                    pid_state['auto_tune_kd'] = 0.0375 * avg_ku * avg_tu
+                    # Ziegler-Nichols PID tuning rules adjusted for wind tunnel airspeed control
+                    # Based on empirical testing: manual Kp=2, Ki=3.5, Kd=1 vs relay auto-tune Ku≈9.6, Tu≈15s
+                    # Classic Z-N: Kp=0.6*Ku, Ki=1.2*Ku/Tu, Kd=0.075*Ku*Tu
+                    # Empirical multipliers: Kp=0.2*Ku, Ki=5.5*Ku/Tu, Kd=0.0065*Ku*Tu
+                    pid_state['auto_tune_kp'] = 0.2 * avg_ku
+                    pid_state['auto_tune_ki'] = 5.5 * avg_ku / avg_tu
+                    pid_state['auto_tune_kd'] = 0.0065 * avg_ku * avg_tu
                 
                 logger.info(f"Auto-tune complete: Kp={pid_state['auto_tune_kp']:.2f}, Ki={pid_state['auto_tune_ki']:.3f}, Kd={pid_state['auto_tune_kd']:.3f} (from {total_cycles_completed} total cycles)")
                 
