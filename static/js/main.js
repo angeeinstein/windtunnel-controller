@@ -1670,6 +1670,9 @@ async function loadSavedSequences() {
                 info.appendChild(nameEl);
                 info.appendChild(stepsEl);
                 
+                const buttonContainer = document.createElement('div');
+                buttonContainer.style.cssText = 'display: flex; gap: 8px;';
+                
                 const loadBtn = document.createElement('button');
                 loadBtn.textContent = 'Edit';
                 loadBtn.style.cssText = 'padding: 6px 12px; background: var(--accent-color); color: white; border: none; border-radius: 4px; font-size: 0.875rem; cursor: pointer;';
@@ -1678,8 +1681,20 @@ async function loadSavedSequences() {
                     loadSequenceForEdit(name, sequence);
                 };
                 
+                const deleteBtn = document.createElement('button');
+                deleteBtn.textContent = '×';
+                deleteBtn.style.cssText = 'padding: 6px 12px; background: var(--danger-color); color: white; border: none; border-radius: 4px; font-size: 1.2rem; cursor: pointer; line-height: 1;';
+                deleteBtn.title = 'Delete sequence';
+                deleteBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    deleteSequenceFromList(name);
+                };
+                
+                buttonContainer.appendChild(loadBtn);
+                buttonContainer.appendChild(deleteBtn);
+                
                 item.appendChild(info);
-                item.appendChild(loadBtn);
+                item.appendChild(buttonContainer);
                 sequenceList.appendChild(item);
             }
         } else {
@@ -1705,6 +1720,9 @@ function selectSequence(name, sequence) {
             item.style.background = 'var(--background-color)';
         }
     });
+    
+    // Set loop checkbox based on saved setting
+    document.getElementById('sequenceLoopCheckbox').checked = sequence.loop || false;
     
     // Show timeline and enable start button
     document.getElementById('sequenceTimelineContainer').style.display = 'block';
@@ -2007,18 +2025,69 @@ async function checkSequenceStatus() {
 
 // Edit Tab Functions
 
+async function deleteSequenceFromList(name) {
+    if (!confirm(`Are you sure you want to delete the sequence "${name}"?`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/sequence/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name })
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            // Reload the sequence list
+            loadSavedSequences();
+            
+            // Clear selection if deleted sequence was selected
+            if (selectedSequenceName === name) {
+                selectedSequenceName = null;
+                currentSequenceData = null;
+                document.getElementById('sequenceTimelineContainer').style.display = 'none';
+                const startBtn = document.getElementById('startSequenceBtn');
+                startBtn.disabled = true;
+                startBtn.style.opacity = '0.5';
+                startBtn.style.cursor = 'not-allowed';
+            }
+        } else {
+            alert('Error deleting sequence: ' + data.message);
+        }
+    } catch (error) {
+        console.error('Error deleting sequence:', error);
+        alert('Error deleting sequence');
+    }
+}
+
 function loadSequenceForEdit(name, sequence) {
     document.getElementById('sequenceName').value = name;
+    document.getElementById('sequenceDefaultLoop').checked = sequence.loop || false;
     sequenceSteps = JSON.parse(JSON.stringify(sequence.steps)); // Deep copy
     renderStepList();
     switchSequenceTab('edit');
 }
 
 function addSequenceStep() {
+    // Get end speed from previous step to auto-align
+    let startSpeed = 0;
+    if (sequenceSteps.length > 0) {
+        const prevStep = sequenceSteps[sequenceSteps.length - 1];
+        if (prevStep.type === 'ramp') {
+            startSpeed = prevStep.end_airspeed || 0;
+        } else if (prevStep.type === 'hold' || prevStep.type === 'step') {
+            startSpeed = prevStep.airspeed || 0;
+        } else if (prevStep.type === 'sine') {
+            startSpeed = prevStep.center_airspeed || 0;
+        }
+    }
+    
     const step = {
         type: 'ramp',
-        start_airspeed: 0,
-        end_airspeed: 10,
+        start_airspeed: startSpeed,
+        end_airspeed: startSpeed + 10,
         duration: 10,
         servo_angle: 0
     };
@@ -2170,7 +2239,8 @@ async function saveSequence() {
     }
     
     const sequence = {
-        steps: sequenceSteps
+        steps: sequenceSteps,
+        loop: document.getElementById('sequenceDefaultLoop').checked
     };
     
     try {
@@ -2232,6 +2302,7 @@ async function deleteCurrentSequence() {
 
 function clearSequenceEditor() {
     document.getElementById('sequenceName').value = '';
+    document.getElementById('sequenceDefaultLoop').checked = false;
     sequenceSteps = [];
     renderStepList();
 }

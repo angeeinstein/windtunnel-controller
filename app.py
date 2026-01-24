@@ -5098,9 +5098,27 @@ def start_sequence():
         
         sequence = sequences[sequence_name]
         
-        # Ensure PID is running
+        # Auto-start PID if not running
         if not pid_state.get('enabled', False):
-            return jsonify({'status': 'error', 'message': 'PID control must be active to run sequences'}), 400
+            # Get initial target speed from first step
+            first_step = sequence['steps'][0] if sequence['steps'] else None
+            if first_step:
+                if first_step['type'] == 'ramp':
+                    initial_speed = first_step.get('start_airspeed', 0.0)
+                elif first_step['type'] in ['hold', 'step']:
+                    initial_speed = first_step.get('airspeed', 0.0)
+                elif first_step['type'] == 'sine':
+                    initial_speed = first_step.get('center_airspeed', 0.0)
+                else:
+                    initial_speed = 0.0
+                
+                # Start PID with initial speed
+                pid_state['enabled'] = True
+                pid_state['target_airspeed'] = initial_speed
+                if pid_state['controller']:
+                    pid_state['controller'].setpoint = initial_speed
+                
+                logger.info(f"Auto-started PID control with target {initial_speed} m/s for sequence")
         
         # Stop existing sequence if running
         if sequence_state['active']:

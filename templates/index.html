@@ -333,6 +333,15 @@
                     <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--text-primary);">Sequence Name</label>
                     <input type="text" id="sequenceName" placeholder="Enter sequence name..." style="width: 100%; padding: 10px; background: var(--card-background); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); font-size: 1rem;">
                 </div>
+                
+                <!-- Loop Setting -->
+                <div style="margin-bottom: 24px; padding: 12px; background: var(--card-background); border-radius: 8px;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" id="sequenceDefaultLoop" style="width: 18px; height: 18px; cursor: pointer;">
+                        <span style="font-weight: 600; color: var(--text-primary);">Loop this sequence by default</span>
+                    </label>
+                    <div style="margin-top: 8px; font-size: 0.875rem; color: var(--text-secondary);">When enabled, this sequence will automatically repeat when started.</div>
+                </div>
 
                 <!-- Step List -->
                 <div style="margin-bottom: 24px;">
@@ -345,6 +354,9 @@
                             </svg>
                             Add Step
                         </button>
+                    </div>
+                    <div style="margin-bottom: 12px; padding: 12px; background: var(--card-background); border-radius: 6px; font-size: 0.875rem; color: var(--text-secondary);">
+                        <strong style="color: var(--text-primary);">Duration:</strong> How long the step lasts. For <strong>Ramp</strong>, it's the time to change from start to end speed. For <strong>Hold</strong>, it's how long to maintain the speed. Steps execute automatically.
                     </div>
                     <div id="stepList" style="display: flex; flex-direction: column; gap: 12px; max-height: 400px; overflow-y: auto;">
                         <div style="text-align: center; padding: 24px; color: var(--text-secondary); font-style: italic; background: var(--card-background); border-radius: 8px;">
