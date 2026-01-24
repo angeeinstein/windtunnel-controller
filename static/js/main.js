@@ -943,6 +943,44 @@ function closeExportModal() {
     socket.off('export_progress');
 }
 
+// Help Modal Functions
+function openHelpModal() {
+    const modal = document.getElementById('helpModal');
+    modal.style.display = 'block';
+    showHelpSection('quickstart'); // Show first section by default
+}
+
+function closeHelpModal() {
+    const modal = document.getElementById('helpModal');
+    modal.style.display = 'none';
+}
+
+function showHelpSection(sectionName) {
+    // Hide all sections
+    const sections = document.querySelectorAll('.help-section');
+    sections.forEach(section => {
+        section.style.display = 'none';
+    });
+    
+    // Show selected section
+    const targetSection = document.getElementById(`help-section-${sectionName}`);
+    if (targetSection) {
+        targetSection.style.display = 'block';
+    }
+    
+    // Update navigation active state
+    const navLinks = document.querySelectorAll('.help-nav-link');
+    navLinks.forEach(link => {
+        if (link.dataset.section === sectionName) {
+            link.style.background = 'var(--accent-color)';
+            link.style.color = 'white';
+        } else {
+            link.style.background = 'transparent';
+            link.style.color = 'var(--text-primary)';
+        }
+    });
+}
+
 async function loadUSBDrives() {
     const usbList = document.getElementById('usbDrivesList');
     const exportStatus = document.getElementById('exportStatus');

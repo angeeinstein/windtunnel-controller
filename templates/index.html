@@ -36,6 +36,13 @@
                     <circle cx="12" cy="12" r="3"></circle>
                 </svg>
             </button>
+            <button class="export-btn" onclick="openHelpModal()" title="Help & Documentation" style="margin-left: 12px;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+            </button>
         </div>
     </div>
     <div class="container">
@@ -202,7 +209,245 @@
             <canvas id="fullscreenGraph"></canvas>
         </div>
     </div>
-
+    <!-- Help & Documentation Modal -->
+    <div id="helpModal" class="graph-modal" style="display: none;">
+        <div class="graph-modal-header">
+            <h2>Help & Documentation</h2>
+            <button class="graph-close-btn" onclick="closeHelpModal()">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+        </div>
+        <div class="export-modal-content" style="padding: 40px; max-width: 900px; margin: 0 auto;">
+            <div style="display: flex; gap: 24px;">
+                <!-- Sidebar Navigation -->
+                <div style="min-width: 200px; border-right: 1px solid var(--border-color); padding-right: 24px;">
+                    <div style="position: sticky; top: 20px;">
+                        <h3 style="margin: 0 0 16px 0; color: var(--text-primary); font-size: 0.9rem; text-transform: uppercase; opacity: 0.7;">Contents</h3>
+                        <nav style="display: flex; flex-direction: column; gap: 8px;">
+                            <a href="#help-quickstart" onclick="showHelpSection('quickstart'); return false;" class="help-nav-link" data-section="quickstart" style="padding: 8px 12px; border-radius: 6px; text-decoration: none; color: var(--text-primary); transition: background 0.2s;">Quick Start</a>
+                            <a href="#help-pid" onclick="showHelpSection('pid'); return false;" class="help-nav-link" data-section="pid" style="padding: 8px 12px; border-radius: 6px; text-decoration: none; color: var(--text-primary); transition: background 0.2s;">PID Control</a>
+                            <a href="#help-sensors" onclick="showHelpSection('sensors'); return false;" class="help-nav-link" data-section="sensors" style="padding: 8px 12px; border-radius: 6px; text-decoration: none; color: var(--text-primary); transition: background 0.2s;">Sensors</a>
+                            <a href="#help-export" onclick="showHelpSection('export'); return false;" class="help-nav-link" data-section="export" style="padding: 8px 12px; border-radius: 6px; text-decoration: none; color: var(--text-primary); transition: background 0.2s;">Data Export</a>
+                            <a href="#help-troubleshooting" onclick="showHelpSection('troubleshooting'); return false;" class="help-nav-link" data-section="troubleshooting" style="padding: 8px 12px; border-radius: 6px; text-decoration: none; color: var(--text-primary); transition: background 0.2s;">Troubleshooting</a>
+                            <a href="#help-about" onclick="showHelpSection('about'); return false;" class="help-nav-link" data-section="about" style="padding: 8px 12px; border-radius: 6px; text-decoration: none; color: var(--text-primary); transition: background 0.2s;">About</a>
+                        </nav>
+                    </div>
+                </div>
+                
+                <!-- Content Area -->
+                <div style="flex: 1; max-height: 70vh; overflow-y: auto; padding-right: 16px;">
+                    <!-- Quick Start Section -->
+                    <div id="help-section-quickstart" class="help-section">
+                        <h2 style="color: var(--accent-color); margin-bottom: 16px;">Quick Start Guide</h2>
+                        <p style="color: var(--text-secondary); line-height: 1.6; margin-bottom: 16px;">Welcome to the Wind Tunnel Control System. This guide will help you get started.</p>
+                        
+                        <h3 style="color: var(--text-primary); margin: 24px 0 12px 0;">Basic Operation</h3>
+                        <ol style="color: var(--text-secondary); line-height: 1.8; padding-left: 24px;">
+                            <li><strong>View Sensor Data:</strong> Real-time sensor readings appear as cards on the main dashboard</li>
+                            <li><strong>Control Mode:</strong> Choose between PID (airspeed control) or Manual (direct fan speed) using the toggle</li>
+                            <li><strong>Start Control:</strong> Set your target and click Start</li>
+                            <li><strong>Emergency Stop:</strong> Click the red stop button in the top bar to immediately stop the fan</li>
+                        </ol>
+                        
+                        <h3 style="color: var(--text-primary); margin: 24px 0 12px 0;">Interface Overview</h3>
+                        <ul style="color: var(--text-secondary); line-height: 1.8; padding-left: 24px;">
+                            <li><strong>Status Bar (Top):</strong> Connection status, WiFi indicator, and control buttons</li>
+                            <li><strong>Sensor Cards:</strong> Live data display with graphs and history</li>
+                            <li><strong>Control Panel:</strong> Switch between PID and manual fan control</li>
+                            <li><strong>Settings:</strong> Configure sensors, PID parameters, and export data</li>
+                        </ul>
+                    </div>
+                    
+                    <!-- PID Control Section -->
+                    <div id="help-section-pid" class="help-section" style="display: none;">
+                        <h2 style="color: var(--accent-color); margin-bottom: 16px;">PID Airspeed Control</h2>
+                        <p style="color: var(--text-secondary); line-height: 1.6; margin-bottom: 16px;">The PID controller automatically adjusts fan speed to maintain a target airspeed.</p>
+                        
+                        <h3 style="color: var(--text-primary); margin: 24px 0 12px 0;">Using PID Control</h3>
+                        <ol style="color: var(--text-secondary); line-height: 1.8; padding-left: 24px;">
+                            <li>Ensure the mode toggle is set to <strong>PID mode</strong> (toggle OFF/left position)</li>
+                            <li>Set your target airspeed using the slider (0-30 m/s)</li>
+                            <li>Click <strong>Start</strong> to begin control</li>
+                            <li>Monitor the <strong>Target</strong>, <strong>Actual</strong>, and <strong>Fan</strong> values</li>
+                            <li>The controller will automatically adjust fan speed to reach and maintain the target</li>
+                        </ol>
+                        
+                        <h3 style="color: var(--text-primary); margin: 24px 0 12px 0;">Auto-Tune Feature</h3>
+                        <p style="color: var(--text-secondary); line-height: 1.6; margin-bottom: 12px;">Auto-tune automatically determines optimal PID parameters:</p>
+                        <ol style="color: var(--text-secondary); line-height: 1.8; padding-left: 24px;">
+                            <li>Go to Settings → PID Control tab</li>
+                            <li>Click <strong>Start Auto-Tune</strong></li>
+                            <li>Set a test setpoint (typically 10-15 m/s recommended)</li>
+                            <li>Wait for the process to complete (typically 2-3 minutes)</li>
+                            <li>The system will automatically apply the tuned parameters</li>
+                        </ol>
+                        
+                        <h3 style="color: var(--text-primary); margin: 24px 0 12px 0;">Manual Tuning</h3>
+                        <p style="color: var(--text-secondary); line-height: 1.6; margin-bottom: 12px;">Advanced users can manually adjust PID parameters in Settings:</p>
+                        <ul style="color: var(--text-secondary); line-height: 1.8; padding-left: 24px;">
+                            <li><strong>Kp (Proportional):</strong> Immediate response to error (typical: 1-3)</li>
+                            <li><strong>Ki (Integral):</strong> Eliminates steady-state error (typical: 2-5)</li>
+                            <li><strong>Kd (Derivative):</strong> Reduces overshoot (typical: 0.5-2)</li>
+                            <li><strong>Min Fan Speed:</strong> Minimum output when control is active (typical: 15-20%)</li>
+                        </ul>
+                        
+                        <div style="background: var(--card-background); padding: 16px; border-radius: 8px; border-left: 4px solid var(--accent-color); margin-top: 16px;">
+                            <strong style="color: var(--accent-color);">💡 Tip:</strong>
+                            <p style="color: var(--text-secondary); margin: 8px 0 0 0; line-height: 1.6;">The system includes setpoint rate limiting (3 m/s per second) and anti-windup protection to prevent overshoot and oscillations.</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Sensors Section -->
+                    <div id="help-section-sensors" class="help-section" style="display: none;">
+                        <h2 style="color: var(--accent-color); margin-bottom: 16px;">Sensor Configuration</h2>
+                        <p style="color: var(--text-secondary); line-height: 1.6; margin-bottom: 16px;">The system supports multiple sensor types for comprehensive data acquisition.</p>
+                        
+                        <h3 style="color: var(--text-primary); margin: 24px 0 12px 0;">Supported Sensor Types</h3>
+                        <ul style="color: var(--text-secondary); line-height: 1.8; padding-left: 24px;">
+                            <li><strong>UDP Network Sensors:</strong> ESP32-based wireless sensors (auto-detected)</li>
+                            <li><strong>I2C Sensors:</strong> BMP280, BME280, SDP8xx, MPU6050, INA219, VL53L0X</li>
+                            <li><strong>ADC Sensors:</strong> Analog sensors via ADS1115 or MCP3008</li>
+                            <li><strong>GPIO Sensors:</strong> Digital sensors, DHT11/22</li>
+                            <li><strong>1-Wire Sensors:</strong> DS18B20 temperature sensors</li>
+                            <li><strong>Calculated Sensors:</strong> Formula-based virtual sensors</li>
+                        </ul>
+                        
+                        <h3 style="color: var(--text-primary); margin: 24px 0 12px 0;">Adding Sensors</h3>
+                        <ol style="color: var(--text-secondary); line-height: 1.8; padding-left: 24px;">
+                            <li>Go to Settings → Sensors tab</li>
+                            <li>Click <strong>+ Add Sensor</strong></li>
+                            <li>Select sensor type and configure parameters</li>
+                            <li>UDP sensors are automatically created when they start sending data</li>
+                        </ol>
+                        
+                        <h3 style="color: var(--text-primary); margin: 24px 0 12px 0;">Calculated Sensors</h3>
+                        <p style="color: var(--text-secondary); line-height: 1.6; margin-bottom: 12px;">Create virtual sensors using formulas:</p>
+                        <ul style="color: var(--text-secondary); line-height: 1.8; padding-left: 24px;">
+                            <li>Reference other sensors by their ID (e.g., <code style="background: var(--card-background); padding: 2px 6px; border-radius: 3px;">lift / drag</code>)</li>
+                            <li>Use mathematical functions: <code style="background: var(--card-background); padding: 2px 6px; border-radius: 3px;">sqrt()</code>, <code style="background: var(--card-background); padding: 2px 6px; border-radius: 3px;">abs()</code>, <code style="background: var(--card-background); padding: 2px 6px; border-radius: 3px;">max()</code>, <code style="background: var(--card-background); padding: 2px 6px; border-radius: 3px;">min()</code></li>
+                            <li>Example: <code style="background: var(--card-background); padding: 2px 6px; border-radius: 3px;">sqrt(max(0, differential_pressure * 2 / 1.225))</code></li>
+                        </ul>
+                    </div>
+                    
+                    <!-- Data Export Section -->
+                    <div id="help-section-export" class="help-section" style="display: none;">
+                        <h2 style="color: var(--accent-color); margin-bottom: 16px;">Data Export</h2>
+                        <p style="color: var(--text-secondary); line-height: 1.6; margin-bottom: 16px;">Export sensor data to USB drives for offline analysis.</p>
+                        
+                        <h3 style="color: var(--text-primary); margin: 24px 0 12px 0;">Exporting Data</h3>
+                        <ol style="color: var(--text-secondary); line-height: 1.8; padding-left: 24px;">
+                            <li>Click the <strong>Download icon</strong> in the top bar</li>
+                            <li>Select time range (all data, last N minutes/hours)</li>
+                            <li>Choose your USB drive from the list</li>
+                            <li>Click <strong>Export</strong></li>
+                            <li>Wait for the export to complete</li>
+                        </ol>
+                        
+                        <h3 style="color: var(--text-primary); margin: 24px 0 12px 0;">Export Format</h3>
+                        <p style="color: var(--text-secondary); line-height: 1.6; margin-bottom: 12px;">Data is exported as CSV files with:</p>
+                        <ul style="color: var(--text-secondary); line-height: 1.8; padding-left: 24px;">
+                            <li>Timestamp (ISO 8601 format)</li>
+                            <li>All sensor values at each time point</li>
+                            <li>Metadata header with sensor information</li>
+                            <li>Compatible with Excel, Python, MATLAB, etc.</li>
+                        </ul>
+                    </div>
+                    
+                    <!-- Troubleshooting Section -->
+                    <div id="help-section-troubleshooting" class="help-section" style="display: none;">
+                        <h2 style="color: var(--accent-color); margin-bottom: 16px;">Troubleshooting</h2>
+                        
+                        <h3 style="color: var(--text-primary); margin: 24px 0 12px 0;">Connection Issues</h3>
+                        <div style="background: var(--card-background); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                            <p style="color: var(--text-secondary); line-height: 1.6; margin-bottom: 12px;"><strong>Status shows "Disconnected":</strong></p>
+                            <ul style="color: var(--text-secondary); line-height: 1.6; padding-left: 24px;">
+                                <li>Check that the server is running</li>
+                                <li>Verify network connection</li>
+                                <li>Refresh the page (F5)</li>
+                                <li>Check browser console for errors (F12)</li>
+                            </ul>
+                        </div>
+                        
+                        <h3 style="color: var(--text-primary); margin: 24px 0 12px 0;">PID Control Issues</h3>
+                        <div style="background: var(--card-background); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                            <p style="color: var(--text-secondary); line-height: 1.6; margin-bottom: 12px;"><strong>PID not starting or showing errors:</strong></p>
+                            <ul style="color: var(--text-secondary); line-height: 1.6; padding-left: 24px;">
+                                <li>Ensure airspeed sensor is configured in Settings</li>
+                                <li>Check that the sensor is receiving data</li>
+                                <li>Verify PID parameters are set (run auto-tune if needed)</li>
+                            </ul>
+                        </div>
+                        
+                        <div style="background: var(--card-background); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                            <p style="color: var(--text-secondary); line-height: 1.6; margin-bottom: 12px;"><strong>PID oscillating or overshooting:</strong></p>
+                            <ul style="color: var(--text-secondary); line-height: 1.6; padding-left: 24px;">
+                                <li>Try running auto-tune again</li>
+                                <li>Manually reduce Kp (proportional gain)</li>
+                                <li>Increase Kd (derivative gain) to dampen oscillations</li>
+                            </ul>
+                        </div>
+                        
+                        <h3 style="color: var(--text-primary); margin: 24px 0 12px 0;">Sensor Issues</h3>
+                        <div style="background: var(--card-background); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                            <p style="color: var(--text-secondary); line-height: 1.6; margin-bottom: 12px;"><strong>UDP sensors not appearing:</strong></p>
+                            <ul style="color: var(--text-secondary); line-height: 1.6; padding-left: 24px;">
+                                <li>Check ESP32 is powered on and connected to network</li>
+                                <li>Verify UDP port matches (default: 5005, 5006, 5007)</li>
+                                <li>Check firewall settings</li>
+                                <li>Look for "UDP received" messages in server console</li>
+                            </ul>
+                        </div>
+                        
+                        <div style="background: var(--card-background); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                            <p style="color: var(--text-secondary); line-height: 1.6; margin-bottom: 12px;"><strong>Sensor showing "Error" or no data:</strong></p>
+                            <ul style="color: var(--text-secondary); line-height: 1.6; padding-left: 24px;">
+                                <li>Check hardware connections</li>
+                                <li>Verify I2C address is correct</li>
+                                <li>Check server console for error messages</li>
+                                <li>Try disabling and re-enabling the sensor</li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <!-- About Section -->
+                    <div id="help-section-about" class="help-section" style="display: none;">
+                        <h2 style="color: var(--accent-color); margin-bottom: 16px;">About This Project</h2>
+                        <p style="color: var(--text-secondary); line-height: 1.6; margin-bottom: 16px;">Wind Tunnel Control System - A comprehensive data acquisition and control platform for wind tunnel experiments.</p>
+                        
+                        <h3 style="color: var(--text-primary); margin: 24px 0 12px 0;">Features</h3>
+                        <ul style="color: var(--text-secondary); line-height: 1.8; padding-left: 24px;">
+                            <li>Real-time sensor data visualization</li>
+                            <li>Advanced PID airspeed control with auto-tune</li>
+                            <li>Multi-sensor support (UDP, I2C, ADC, GPIO, 1-Wire)</li>
+                            <li>Calculated/formula-based virtual sensors</li>
+                            <li>Historical data graphing</li>
+                            <li>CSV data export to USB</li>
+                            <li>ESP32 remote configuration</li>
+                            <li>Responsive web interface</li>
+                        </ul>
+                        
+                        <h3 style="color: var(--text-primary); margin: 24px 0 12px 0;">Technology Stack</h3>
+                        <ul style="color: var(--text-secondary); line-height: 1.8; padding-left: 24px;">
+                            <li><strong>Backend:</strong> Python Flask + SocketIO</li>
+                            <li><strong>Frontend:</strong> HTML5, CSS3, JavaScript</li>
+                            <li><strong>Hardware:</strong> Raspberry Pi, ESP32</li>
+                            <li><strong>Communication:</strong> WebSocket, UDP, I2C, GPIO</li>
+                        </ul>
+                        
+                        <h3 style="color: var(--text-primary); margin: 24px 0 12px 0;">Credits</h3>
+                        <p style="color: var(--text-secondary); line-height: 1.6;">Created by Angelo Popovic and Thomas Blankenbichler (LAV23)</p>
+                        
+                        <div style="background: var(--card-background); padding: 16px; border-radius: 8px; border-left: 4px solid var(--accent-color); margin-top: 24px;">
+                            <p style="color: var(--text-secondary); margin: 0; line-height: 1.6;">For more information, updates, or to report issues, contact the development team.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
     <script src="{{ url_for('static', filename='js/main.js') }}?v=7"></script>
 </body>
 </html>
