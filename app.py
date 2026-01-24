@@ -409,23 +409,28 @@ class PIDController:
     """
     PID Controller with anti-windup for airspeed control.
     """
-    def __init__(self, kp=5.0, ki=0.5, kd=0.1, min_output=15.0, max_output=100.0):
+    def __init__(self, kp=5.0, ki=0.5, kd=0.1, min_output=15.0, max_output=100.0, setpoint_rate_limit=3.0):
         self.kp = kp
         self.ki = ki
         self.kd = kd
         self.min_output = min_output  # Minimum fan speed (%)
         self.max_output = max_output  # Maximum fan speed (%)
+        self.setpoint_rate_limit = setpoint_rate_limit  # Max setpoint change rate (m/s per second)
         
         self.setpoint = 0.0
+        self.setpoint_actual = 0.0  # Rate-limited setpoint
         self.last_error = 0.0
         self.integral = 0.0
         self.last_time = None
+        self.last_pv = None  # Last process variable for derivative
         
     def reset(self):
         """Reset controller state"""
         self.last_error = 0.0
         self.integral = 0.0
         self.last_time = None
+        self.last_pv = None
+        self.setpoint_actual = self.setpoint
         
     def update(self, current_value, dt=None):
         """
@@ -448,26 +453,50 @@ class PIDController:
         
         self.last_time = current_time
         
-        # Calculate error
-        error = self.setpoint - current_value
+        # Apply setpoint rate limiting to prevent large steps
+        if self.setpoint_rate_limit > 0:
+            max_change = self.setpoint_rate_limit * dt
+            setpoint_diff = self.setpoint - self.setpoint_actual
+            if abs(setpoint_diff) > max_change:
+                self.setpoint_actual += max_change if setpoint_diff > 0 else -max_change
+            else:
+                self.setpoint_actual = self.setpoint
+        else:
+            self.setpoint_actual = self.setpoint
+        
+        # Calculate error (use rate-limited setpoint)
+        error = self.setpoint_actual - current_value
         
         # Proportional term
         p_term = self.kp * error
         
-        # Integral term with anti-windup
-        self.integral += error * dt
-        # Clamp integral to prevent windup
-        max_integral = (self.max_output - self.min_output) / (self.ki if self.ki != 0 else 1.0)
-        self.integral = max(-max_integral, min(max_integral, self.integral))
-        i_term = self.ki * self.integral
-        
         # Derivative term (on measurement, not error, to avoid setpoint kick)
-        if dt > 0 and hasattr(self, 'last_pv'):
+        if dt > 0 and self.last_pv is not None:
             derivative = -(current_value - self.last_pv) / dt  # Negative because we want derivative of error
         else:
             derivative = 0.0
         d_term = self.kd * derivative
         self.last_pv = current_value
+        
+        # Calculate unclamped output (for anti-windup)
+        output_raw = p_term + self.ki * self.integral + d_term
+        output = max(self.min_output, min(self.max_output, output_raw))
+        
+        # Conditional integration anti-windup:
+        # Only integrate if NOT saturated, or if saturated but error would move output back
+        should_integrate = True
+        if output == self.max_output and error > 0:
+            should_integrate = False  # At max output, positive error would increase it further
+        elif output == self.min_output and error < 0:
+            should_integrate = False  # At min output, negative error would decrease it further
+        
+        if should_integrate:
+            self.integral += error * dt
+            # Clamp integral to reasonable bounds
+            max_integral = (self.max_output - self.min_output) / (self.ki if self.ki != 0 else 1.0)
+            self.integral = max(-max_integral, min(max_integral, self.integral))
+        
+        i_term = self.ki * self.integral
         
         self.last_error = error
         
@@ -482,7 +511,7 @@ class PIDController:
         if not hasattr(self, '_last_log_time'):
             self._last_log_time = 0
         if current_time - self._last_log_time > 2.0:
-            logger.info(f"PID Debug: SP={self.setpoint:.2f}, PV={current_value:.2f}, Err={error:.2f} | P={p_term:.1f}, I={i_term:.1f}, D={d_term:.1f} | Out={output_unclamped:.1f}->{output:.1f}%")
+            logger.info(f"PID Debug: SP={self.setpoint:.2f}(actual={self.setpoint_actual:.2f}), PV={current_value:.2f}, Err={error:.2f} | P={p_term:.1f}, I={i_term:.1f}, D={d_term:.1f} | Out={output_raw:.1f}->{output:.1f}%")
             self._last_log_time = current_time
         
         return output
@@ -3438,11 +3467,11 @@ def pid_autotune():
                     
                     logger.info(f"Auto-tune measurements from {len(all_ku_values)} setpoints: Ku={avg_ku:.2f}, Tu={avg_tu:.2f}s")
                     
-                    # Ziegler-Nichols PID tuning rules (scaled down 10x for less aggressive response)
-                    # Relay-based auto-tune tends to produce overly aggressive gains
-                    pid_state['auto_tune_kp'] = 0.06 * avg_ku
-                    pid_state['auto_tune_ki'] = 0.12 * avg_ku / avg_tu
-                    pid_state['auto_tune_kd'] = 0.0075 * avg_ku * avg_tu
+                    # Ziegler-Nichols PID tuning rules (scaled down 2x for smoother response)
+                    # Relay-based auto-tune can produce slightly aggressive gains
+                    pid_state['auto_tune_kp'] = 0.3 * avg_ku
+                    pid_state['auto_tune_ki'] = 0.6 * avg_ku / avg_tu
+                    pid_state['auto_tune_kd'] = 0.0375 * avg_ku * avg_tu
                 
                 logger.info(f"Auto-tune complete: Kp={pid_state['auto_tune_kp']:.2f}, Ki={pid_state['auto_tune_ki']:.3f}, Kd={pid_state['auto_tune_kd']:.3f} (from {total_cycles_completed} total cycles)")
                 
